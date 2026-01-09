@@ -16,7 +16,6 @@ import {
   Activity as ActivityIcon, 
   TrendingUp,
   PenLine,
-  Download,
   Loader2,
   AlertCircle,
   Plus,
@@ -26,11 +25,10 @@ import {
   Database,
   MoveRight,
   CalendarRange,
-  ClipboardList,
-  Edit3
+  Edit3,
+  Image as ImageIcon
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
 import { supabase } from './supabase';
 import { SiteData, FuelData, Activity, RigMove } from './types';
 import { sites as initialSites, fuelData as initialFuelData } from './mockData';
@@ -506,10 +504,10 @@ const App: React.FC = () => {
     };
   }, [weeklySites, weeklyFuel, weeklyRigs, weeklyFirstDaySites, weeklyLastDaySites]);
 
-  const handleDownloadPDF = async () => {
+  const handleDownloadImage = async () => {
     if (!dashboardRef.current) return;
     setIsDownloading(true);
-    setProgress('Mempersiapkan Layout Laporan (Mohon Tunggu)...');
+    setProgress('Mempersiapkan Gambar Laporan (Mohon Tunggu)...');
     
     try {
       const mainElement = dashboardRef.current.parentElement;
@@ -525,63 +523,45 @@ const App: React.FC = () => {
         backgroundColor: '#f8fafc',
         height: element.scrollHeight,
         width: element.offsetWidth,
-        windowWidth: 1440, 
-        windowHeight: element.scrollHeight,
+        windowWidth: 1440, // Force a fixed window width during clone
         logging: false,
         onclone: (clonedDoc) => {
-          const clonedElement = clonedDoc.body.querySelector('[ref="dashboardRef"]') || 
-                                clonedDoc.body.querySelector('.p-4.lg\\:p-10');
-          
-          if (clonedElement) {
-            const el = clonedElement as HTMLElement;
-            el.style.width = '1440px'; 
-            el.style.height = 'auto';
-            el.style.overflow = 'visible';
-            el.style.padding = '30px'; 
-            
-            const allText = clonedDoc.querySelectorAll('p, span, h1, h2, h3, h4, div');
-            allText.forEach((node: any) => {
-              node.style.lineHeight = '1.4';
-              node.style.transition = 'none';
-              node.style.animation = 'none';
-            });
-
-            const scrollables = clonedDoc.querySelectorAll('.overflow-y-auto, .custom-scrollbar');
-            scrollables.forEach((s: any) => {
-              s.style.overflow = 'visible';
-              s.style.height = 'auto';
-              s.style.maxHeight = 'none';
-            });
-
-            const stickies = clonedDoc.querySelectorAll('.sticky');
-            stickies.forEach((s: any) => {
-              s.style.position = 'relative';
-              s.style.top = '0';
-              s.style.zIndex = '1';
-            });
+          // Adjust the cloned DOM to ensure everything is captured properly
+          const clonedContainer = clonedDoc.querySelector('.min-h-full.max-w-\\[1600px\\]') as HTMLElement;
+          if (clonedContainer) {
+            clonedContainer.style.width = '1440px';
+            clonedContainer.style.height = 'auto';
+            clonedContainer.style.overflow = 'visible';
+            clonedContainer.style.padding = '40px';
           }
+          
+          // Force all scrollable elements to expand their full content
+          const scrollables = clonedDoc.querySelectorAll('.overflow-y-auto, .custom-scrollbar');
+          scrollables.forEach((s: any) => {
+            s.style.overflow = 'visible';
+            s.style.maxHeight = 'none';
+            s.style.height = 'auto';
+          });
+
+          // Disable sticky headers which can cause shifting/overlaying in screenshots
+          const stickies = clonedDoc.querySelectorAll('.sticky');
+          stickies.forEach((s: any) => {
+            s.style.position = 'relative';
+            s.style.top = '0';
+          });
         }
       });
 
-      setProgress('Membangun Berkas PDF...');
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const imgData = canvas.toDataURL('image/jpeg', 1.0);
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      const link = document.createElement('a');
+      link.download = `Zona9_Laporan_${activeView === 'weekly' ? 'Mingguan' : 'Harian'}_${selectedDate}.png`;
+      link.href = imgData;
+      link.click();
       
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'px',
-        format: [imgWidth, imgHeight],
-        hotfixes: ['px_pt']
-      });
-
-      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight, undefined, 'FAST');
-      pdf.save(`Zona9_Laporan_${activeView === 'weekly' ? 'Mingguan' : 'Harian'}_${selectedDate}.pdf`);
-      
-      showToast('PDF Berhasil Diunduh!');
+      showToast('Gambar Berhasil Diunduh!');
     } catch (e) {
       console.error('Export Error:', e);
-      showToast('Gagal mengunduh PDF', true);
+      showToast('Gagal mengunduh gambar', true);
     } finally {
       setIsDownloading(false);
       setProgress('');
@@ -719,9 +699,9 @@ const App: React.FC = () => {
             </div>
             <div className="flex items-center gap-3 no-print">
               {(activeView === 'dashboard' || activeView === 'weekly') ? (
-                <button onClick={handleDownloadPDF} disabled={isDownloading} className={`flex items-center justify-center gap-2 px-6 h-11 text-white rounded-xl shadow-xl transition-all active:scale-95 font-bold text-sm bg-slate-900 hover:bg-slate-800`}>
-                  <Download size={18} />
-                  <span>Download PDF</span>
+                <button onClick={handleDownloadImage} disabled={isDownloading} className={`flex items-center justify-center gap-2 px-6 h-11 text-white rounded-xl shadow-xl transition-all active:scale-95 font-bold text-sm bg-slate-900 hover:bg-slate-800`}>
+                  <ImageIcon size={18} />
+                  <span>Download Gambar</span>
                 </button>
               ) : (
                 <button onClick={handleBulkSave} disabled={isSaving} className="flex items-center justify-center gap-2 px-8 h-11 bg-indigo-600 text-white rounded-xl shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-black text-sm uppercase tracking-widest">
