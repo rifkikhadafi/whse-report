@@ -659,6 +659,12 @@ const App: React.FC = () => {
                     <span>Save Daily Notes</span>
                   </button>
                 )}
+                {activeView === 'weekly' && (
+                  <button onClick={handleSaveWeeklyUpdates} disabled={isSavingWeeklyUpdates} className="flex items-center justify-center gap-2 px-6 h-11 bg-indigo-600 text-white rounded-xl shadow-md hover:bg-indigo-700 transition-all font-bold text-xs uppercase tracking-wider">
+                    {isSavingWeeklyUpdates ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                    <span>Save Weekly Notes</span>
+                  </button>
+                )}
                 {activeView !== 'input' && (
                   <button onClick={handleServerDownload} className="flex items-center gap-2 px-6 h-11 bg-slate-900 text-white rounded-xl shadow-lg hover:bg-slate-800 transition-all font-bold text-xs uppercase tracking-wider">
                     <Download size={16} />
@@ -669,12 +675,6 @@ const App: React.FC = () => {
                   <button onClick={handleBulkSave} disabled={isSaving} className="flex items-center justify-center gap-2 px-8 h-11 bg-indigo-600 text-white rounded-xl shadow-xl hover:bg-indigo-700 transition-all font-black text-sm uppercase tracking-widest">
                     {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                     <span>Simpan Data</span>
-                  </button>
-                )}
-                {activeView === 'weekly' && (
-                  <button onClick={handleSaveWeeklyUpdates} disabled={isSavingWeeklyUpdates} className="flex items-center justify-center gap-2 px-6 h-11 bg-indigo-600 text-white rounded-xl shadow-md hover:bg-indigo-700 transition-all font-bold text-xs uppercase tracking-wider">
-                    {isSavingWeeklyUpdates ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                    <span>Save Weekly Notes</span>
                   </button>
                 )}
               </div>
