@@ -24,7 +24,10 @@ import {
   Trash2,
   CheckCircle2,
   Database,
-  MoveRight
+  MoveRight,
+  CalendarRange,
+  ClipboardList,
+  Edit3
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -53,7 +56,7 @@ const SectionHeader: React.FC<{ title: string; subtitle?: string; icon: React.Re
     </div>
     <div className="flex flex-col justify-center">
       <h2 className="text-base font-bold text-slate-900 leading-tight m-0 p-0">{title}</h2>
-      {subtitle && <p className="text-[10px] text-slate-500 mt-0.5 font-medium m-0 p-0">{subtitle}</p>}
+      {subtitle && <p className="text-[10px] text-slate-600 mt-0.5 font-semibold m-0 p-0">{subtitle}</p>}
     </div>
   </div>
 );
@@ -72,25 +75,56 @@ const StatCard: React.FC<{ title: string; value: string; icon: React.ReactNode; 
     <div className="flex items-center justify-between mb-8">
       <div className="p-3 bg-slate-50 rounded-xl">{icon}</div>
       {trend && (
-        <div className={`flex items-center justify-center text-[11px] font-bold px-3 py-1 rounded-full h-7 shadow-sm ${trendClassName || 'text-slate-600 bg-slate-50'}`}>
+        <div className={`flex items-center justify-center text-[11px] font-bold px-3 py-1 rounded-full h-7 shadow-sm ${trendClassName || 'text-slate-700 bg-slate-50'}`}>
           <span>{trend}</span>
         </div>
       )}
     </div>
     <div className="flex flex-col space-y-1">
-      <p className="text-sm font-medium text-slate-500 m-0 p-0">{title}</p>
-      {subtitle && <p className="text-[10px] text-slate-400 font-medium m-0 p-0">{subtitle}</p>}
+      <p className="text-sm font-semibold text-slate-600 m-0 p-0">{title}</p>
+      {subtitle && <p className="text-[10px] text-slate-500 font-semibold m-0 p-0">{subtitle}</p>}
       <h3 className="text-xl font-bold text-slate-900 tabular-nums m-0 p-0 truncate" title={value}>{value}</h3>
     </div>
   </div>
 );
 
+const AutoResizeTextarea = ({ value, onChange, placeholder, className }: { value: string; onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void; placeholder: string; className: string }) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [value]);
+
+  return (
+    <textarea
+      ref={textareaRef}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      className={className}
+      rows={1}
+    />
+  );
+};
+
 const App: React.FC = () => {
-  const [activeView, setActiveView] = useState<'dashboard' | 'input'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'weekly' | 'input'>('dashboard');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  
+  // Weekly states
+  const today = new Date();
+  const weekAgo = new Date();
+  weekAgo.setDate(today.getDate() - 7);
+  const [startDate, setStartDate] = useState<string>(weekAgo.toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState<string>(today.toISOString().split('T')[0]);
+
   const [isDownloading, setIsDownloading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingWeeklyUpdates, setIsSavingWeeklyUpdates] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
@@ -101,6 +135,23 @@ const App: React.FC = () => {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [rigMoves, setRigMoves] = useState<RigMove[]>([]);
   
+  // Weekly specific data
+  const [weeklySites, setWeeklySites] = useState<any[]>([]);
+  const [weeklyFuel, setWeeklyFuel] = useState<any[]>([]);
+  const [weeklyRigs, setWeeklyRigs] = useState<RigMove[]>([]);
+  const [weeklyActivities, setWeeklyActivities] = useState<any[]>([]);
+  const [weeklyFirstDaySites, setWeeklyFirstDaySites] = useState<SiteData[]>([]);
+  const [weeklyLastDaySites, setWeeklyLastDaySites] = useState<SiteData[]>([]);
+  
+  // Persistent Weekly Updates
+  const [weeklyUpdates, setWeeklyUpdates] = useState<Record<string, string>>({
+    'PHSS': '',
+    'SANGASANGA': '',
+    'SANGATTA': '',
+    'TANJUNG': '',
+    'ZONA 9': ''
+  });
+
   const [prevDaySites, setPrevDaySites] = useState<SiteData[]>([]);
 
   const [localSites, setLocalSites] = useState<SiteData[]>([]);
@@ -175,9 +226,75 @@ const App: React.FC = () => {
     }
   };
 
+  const fetchWeeklyData = async (start: string, end: string) => {
+    setIsLoading(true);
+    try {
+      const [sRes, fRes, rRes, aRes, firstDayRes, lastDayRes] = await Promise.all([
+        supabase.from('sites').select('*').gte('date', start).lte('date', end),
+        supabase.from('fuel_data').select('*').gte('date', start).lte('date', end),
+        supabase.from('rig_moves').select('*').gte('date', start).lte('date', end),
+        supabase.from('activities').select('*').gte('date', start).lte('date', end),
+        supabase.from('sites').select('*').eq('date', start),
+        supabase.from('sites').select('*').eq('date', end)
+      ]);
+
+      setWeeklySites(sRes.data || []);
+      setWeeklyFuel(fRes.data || []);
+      setWeeklyRigs(rRes.data || []);
+      setWeeklyActivities(aRes.data || []);
+      setWeeklyFirstDaySites(firstDayRes.data || []);
+      setWeeklyLastDaySites(lastDayRes.data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchPersistentWeeklyUpdates = async () => {
+    try {
+      const { data, error } = await supabase.from('activities').select('*').eq('date', '9999-12-31');
+      if (data && data.length > 0) {
+        const updates: Record<string, string> = { ...weeklyUpdates };
+        data.forEach(item => {
+          updates[item.site] = item.items?.[0]?.description || '';
+        });
+        setWeeklyUpdates(updates);
+      }
+    } catch (err) {
+      console.error("Failed to fetch persistent weekly updates", err);
+    }
+  };
+
+  const handleSaveWeeklyUpdates = async () => {
+    setIsSavingWeeklyUpdates(true);
+    try {
+      const updates = Object.entries(weeklyUpdates).map(([site, text]) => ({
+        site,
+        date: '9999-12-31',
+        items: [{ category: 'Weekly Update', description: text }]
+      }));
+      const { error } = await supabase.from('activities').upsert(updates, { onConflict: 'site,date' });
+      if (error) throw error;
+      showToast('Weekly Updates berhasil disimpan!');
+    } catch (err: any) {
+      showToast('Error saving updates: ' + err.message, true);
+    } finally {
+      setIsSavingWeeklyUpdates(false);
+    }
+  };
+
   useEffect(() => {
-    fetchData(selectedDate);
-  }, [selectedDate]);
+    fetchPersistentWeeklyUpdates();
+  }, []);
+
+  useEffect(() => {
+    if (activeView === 'dashboard' || activeView === 'input') {
+      fetchData(selectedDate);
+    } else if (activeView === 'weekly') {
+      fetchWeeklyData(startDate, endDate);
+    }
+  }, [selectedDate, activeView, startDate, endDate]);
 
   const showToast = (msg: string, isError = false) => {
     if (isError) setError(msg);
@@ -334,6 +451,61 @@ const App: React.FC = () => {
     };
   }, [sites, fuelData, rigMoves, prevDaySites]);
 
+  const weeklyStats = useMemo(() => {
+    if (weeklySites.length === 0) return null;
+
+    const totalIssue = weeklySites.reduce((acc, curr) => acc + (curr.issued || 0), 0);
+    const totalReceive = weeklySites.reduce((acc, curr) => acc + (curr.received || 0), 0);
+    
+    const lastDayStock = weeklyLastDaySites.reduce((acc, curr) => acc + curr.stock, 0);
+    const firstDayStock = weeklyFirstDaySites.reduce((acc, curr) => acc + curr.stock, 0);
+
+    const calcTrend = (curr: number, prev: number) => {
+      if (prev === 0) return '+0.00%';
+      const diff = ((curr - prev) / prev) * 100;
+      return `${diff >= 0 ? '+' : ''}${diff.toFixed(2)}%`;
+    };
+
+    const stockTrendValue = calcTrend(lastDayStock, firstDayStock);
+    const stockIsPositive = lastDayStock >= firstDayStock;
+
+    const fuelAgg: Record<string, any> = {};
+    weeklyFuel.forEach(f => {
+      if (!fuelAgg[f.name]) fuelAgg[f.name] = { biosolar: 0, pertalite: 0, pertadex: 0 };
+      fuelAgg[f.name].biosolar += (f.biosolar || 0);
+      fuelAgg[f.name].pertalite += (f.pertalite || 0);
+      fuelAgg[f.name].pertadex += (f.pertadex || 0);
+    });
+
+    const siteAgg: Record<string, any> = {};
+    weeklySites.forEach(s => {
+      if (!siteAgg[s.name]) siteAgg[s.name] = { issued: 0, received: 0, color: s.color };
+      siteAgg[s.name].issued += (s.issued || 0);
+      siteAgg[s.name].received += (s.received || 0);
+    });
+
+    const rigMovesBySite: Record<string, { count: number; color: string }> = {};
+    weeklyRigs.forEach(rm => {
+      if (!rigMovesBySite[rm.site]) {
+        const siteColor = weeklyLastDaySites.find(s => s.name === rm.site)?.color || '#cbd5e1';
+        rigMovesBySite[rm.site] = { count: 0, color: siteColor };
+      }
+      rigMovesBySite[rm.site].count += 1;
+    });
+
+    return {
+      totalIssue,
+      totalReceive,
+      lastDayStock,
+      stockTrendValue,
+      stockIsPositive,
+      fuelAgg,
+      siteAgg,
+      totalRigMoves: weeklyRigs.length,
+      rigMovesBySite
+    };
+  }, [weeklySites, weeklyFuel, weeklyRigs, weeklyFirstDaySites, weeklyLastDaySites]);
+
   const handleDownloadPDF = async () => {
     if (!dashboardRef.current) return;
     setIsDownloading(true);
@@ -404,7 +576,7 @@ const App: React.FC = () => {
       });
 
       pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight, undefined, 'FAST');
-      pdf.save(`Zona9_Laporan_Harian_${selectedDate}.pdf`);
+      pdf.save(`Zona9_Laporan_${activeView === 'weekly' ? 'Mingguan' : 'Harian'}_${selectedDate}.pdf`);
       
       showToast('PDF Berhasil Diunduh!');
     } catch (e) {
@@ -456,6 +628,11 @@ const App: React.FC = () => {
     color: s.color
   })).filter(d => d.value > 0), [sites, fuelData]);
 
+  const sortedActivities = useMemo(() => {
+    const order = ['ZONA 9', 'PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG'];
+    return [...activities].sort((a, b) => order.indexOf(a.site) - order.indexOf(b.site));
+  }, [activities]);
+
   return (
     <div className="min-h-screen flex bg-slate-50 overflow-hidden font-inter text-slate-900">
       {(error || successMsg) && (
@@ -469,7 +646,7 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-md flex flex-col items-center justify-center text-white p-6">
           <Loader2 className="w-16 h-16 text-indigo-400 animate-spin mb-6" />
           <h2 className="text-2xl font-black mb-2 tracking-tight">Mengekspor Laporan</h2>
-          <p className="text-slate-300 font-medium text-center">{progress}</p>
+          <p className="text-slate-200 font-medium text-center">{progress}</p>
         </div>
       )}
 
@@ -483,6 +660,10 @@ const App: React.FC = () => {
               <LayoutDashboard size={20} />
               <span className="text-[10px] font-bold uppercase tracking-wider">Daily</span>
             </button>
+            <button onClick={() => setActiveView('weekly')} className={`group w-full aspect-square flex flex-col items-center justify-center gap-1.5 rounded-2xl transition-all ${activeView === 'weekly' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'hover:bg-slate-800 hover:text-white'}`}>
+              <CalendarRange size={20} />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Weekly</span>
+            </button>
             <button onClick={() => setActiveView('input')} className={`group w-full aspect-square flex flex-col items-center justify-center gap-1.5 rounded-2xl transition-all ${activeView === 'input' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'hover:bg-slate-800 hover:text-white'}`}>
               <PenLine size={20} />
               <span className="text-[10px] font-bold uppercase tracking-wider">Input</span>
@@ -495,26 +676,50 @@ const App: React.FC = () => {
         <div className="p-4 lg:p-10 min-h-full max-w-[1600px] mx-auto" ref={dashboardRef}>
           <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 relative z-10">
             <div>
-              <h1 className="text-3xl font-black text-slate-900 tracking-tight">Warehouse Operation Zona 9 Dashboard</h1>
+              <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+                Warehouse Operation Zona 9 {activeView === 'weekly' ? 'Weekly' : 'Daily'} Dashboard
+              </h1>
               <div className="flex items-center gap-4 mt-1.5">
-                <div className="flex items-center gap-2 text-slate-500 font-semibold">
-                  <Calendar size={16} className="text-indigo-500" />
-                  <span className="text-sm">Laporan Harian • {formattedSelectedDate}</span>
+                <div className="flex items-center gap-2 text-slate-600 font-bold">
+                  <Calendar size={16} className="text-indigo-600" />
+                  <span className="text-sm">
+                    {activeView === 'weekly' 
+                      ? `Laporan Mingguan • ${new Date(startDate).toLocaleDateString('id-ID')} - ${new Date(endDate).toLocaleDateString('id-ID')}` 
+                      : `Laporan Harian • ${formattedSelectedDate}`}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 no-print relative">
-                  <input 
-                    type="date" 
-                    value={selectedDate} 
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="h-9 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer hover:border-indigo-300 transition-colors"
-                  />
+                  {activeView === 'weekly' ? (
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="date" 
+                        value={startDate} 
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="h-9 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer hover:border-indigo-300 transition-colors"
+                      />
+                      <span className="text-xs font-bold text-slate-600">s/d</span>
+                      <input 
+                        type="date" 
+                        value={endDate} 
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="h-9 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer hover:border-indigo-300 transition-colors"
+                      />
+                    </div>
+                  ) : (
+                    <input 
+                      type="date" 
+                      value={selectedDate} 
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="h-9 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer hover:border-indigo-300 transition-colors"
+                    />
+                  )}
                 </div>
                 {isLoading && <Loader2 size={14} className="animate-spin text-indigo-400 ml-2" />}
               </div>
             </div>
             <div className="flex items-center gap-3 no-print">
-              {activeView === 'dashboard' ? (
-                <button onClick={handleDownloadPDF} disabled={isDownloading || !dashboardStats} className={`flex items-center justify-center gap-2 px-6 h-11 text-white rounded-xl shadow-xl transition-all active:scale-95 font-bold text-sm ${!dashboardStats ? 'bg-slate-300' : 'bg-slate-900 hover:bg-slate-800'}`}>
+              {(activeView === 'dashboard' || activeView === 'weekly') ? (
+                <button onClick={handleDownloadPDF} disabled={isDownloading} className={`flex items-center justify-center gap-2 px-6 h-11 text-white rounded-xl shadow-xl transition-all active:scale-95 font-bold text-sm bg-slate-900 hover:bg-slate-800`}>
                   <Download size={18} />
                   <span>Download PDF</span>
                 </button>
@@ -537,27 +742,27 @@ const App: React.FC = () => {
                       value={formatCurrency(dashboardStats.totalGoodIssue)} 
                       icon={<ArrowUpRight size={24} className="text-emerald-500" />} 
                       trend={dashboardStats.trends.issue} 
-                      trendClassName="bg-emerald-50 text-emerald-600"
+                      trendClassName="bg-emerald-50 text-emerald-700"
                     />
                     <StatCard 
                       title="Total Good Receive" 
                       value={formatCurrency(dashboardStats.totalGoodReceive)} 
                       icon={<ArrowDownLeft size={24} className="text-rose-500" />} 
                       trend={dashboardStats.trends.receive} 
-                      trendClassName="bg-rose-50 text-rose-600" 
+                      trendClassName="bg-rose-50 text-rose-700" 
                     />
                     <StatCard 
                       title="Total Stock Value" 
                       value={formatCurrency(dashboardStats.totalStockValue)} 
                       icon={<Package size={24} className="text-slate-600" />} 
                       trend={dashboardStats.trends.stock} 
-                      trendClassName={dashboardStats.trends.stockIsPositive ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'} 
+                      trendClassName={dashboardStats.trends.stockIsPositive ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'} 
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <ChartCard title="Good Issue & Receive" subtitle="All Field Zona 9" icon={<ArrowLeftRight size={18} />}>
                       <div className="flex flex-col h-[280px]">
-                        <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                           <span className="w-[40%] text-left">Location</span>
                           <span className="w-[30%] text-center">Good Issue</span>
                           <span className="w-[30%] text-center">Good Receive</span>
@@ -567,10 +772,10 @@ const App: React.FC = () => {
                             <div key={index} className="flex items-center px-2 py-3 hover:bg-slate-50 rounded-xl border-b border-slate-50 last:border-0 transition-colors">
                               <div className="w-[40%] flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: site.color || '#cbd5e1' }}></span>
-                                <span className="text-xs font-bold text-slate-700 truncate">{site.name}</span>
+                                <span className="text-xs font-bold text-slate-800 truncate">{site.name}</span>
                               </div>
-                              <div className="w-[30%] text-center font-bold text-emerald-600 text-xs tabular-nums">{site.issued > 0 ? formatCurrency(site.issued) : '-'}</div>
-                              <div className="w-[30%] text-center font-bold text-rose-600 text-xs tabular-nums">{site.received > 0 ? formatCurrency(site.received) : '-'}</div>
+                              <div className="w-[30%] text-center font-bold text-emerald-700 text-xs tabular-nums">{site.issued > 0 ? formatCurrency(site.issued) : '-'}</div>
+                              <div className="w-[30%] text-center font-bold text-rose-700 text-xs tabular-nums">{site.received > 0 ? formatCurrency(site.received) : '-'}</div>
                             </div>
                           ))}
                         </div>
@@ -603,7 +808,7 @@ const App: React.FC = () => {
                             <div key={index} className="flex items-center justify-between border-b border-slate-50 pb-2 last:border-0">
                               <div className="flex items-center gap-2">
                                 <div className="w-1.5 h-3 rounded-full" style={{ backgroundColor: site.color || '#cbd5e1' }}></div>
-                                <span className="text-[10px] font-bold text-slate-500 uppercase">{site.name}</span>
+                                <span className="text-[10px] font-bold text-slate-600 uppercase">{site.name}</span>
                               </div>
                               <span className="text-xs font-bold text-slate-900 tabular-nums">{formatCurrency(site.stock)}</span>
                             </div>
@@ -620,14 +825,14 @@ const App: React.FC = () => {
                           <div key={site.name} className="flex flex-col">
                             <div className="flex items-center gap-2 mb-0.5">
                               <div className="w-1.5 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: site.color || '#cbd5e1' }}></div>
-                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight truncate">{site.name}</span>
+                              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-tight truncate">{site.name}</span>
                             </div>
                             <span className="text-[12px] font-bold text-slate-900 ml-3.5 tabular-nums leading-none">{site.pob}</span>
                           </div>
                         ))}
                       </div>
                       <div className="flex flex-col items-center pt-4 border-t border-slate-100 mt-4 overflow-visible">
-                        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total POB</h3>
+                        <h3 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-1">Total POB</h3>
                         <div className="relative w-28 h-28 overflow-visible">
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -654,9 +859,9 @@ const App: React.FC = () => {
                                   {rm.site} - {rm.rig_name}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-2 text-[9px] text-slate-500 font-medium ml-3.5 leading-none">
+                              <div className="flex items-center gap-2 text-[9px] text-slate-600 font-semibold ml-3.5 leading-none">
                                 <span className="truncate">{rm.from_loc}</span>
-                                <MoveRight size={10} className="text-indigo-400 shrink-0" />
+                                <MoveRight size={10} className="text-indigo-600 shrink-0" />
                                 <span className="truncate">{rm.to_loc}</span>
                               </div>
                             </div>
@@ -669,7 +874,7 @@ const App: React.FC = () => {
                         )}
                       </div>
                       <div className="flex flex-col items-center pt-4 border-t border-slate-100 mt-4 overflow-visible">
-                        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">TOTAL MOVE</h3>
+                        <h3 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-1">TOTAL MOVE</h3>
                         <div className="relative w-28 h-28 overflow-visible">
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -706,19 +911,19 @@ const App: React.FC = () => {
                               <div key={data.name} className="flex flex-col">
                                 <div className="flex items-center gap-2 mb-1">
                                   <div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: sites.find(s => s.name === data.name)?.color || '#94a3b8' }}></div>
-                                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight truncate">{data.name}</span>
+                                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-tight truncate">{data.name}</span>
                                 </div>
                                 <div className="flex gap-4 ml-3.5 tabular-nums">
                                   <div className="flex flex-col">
-                                    <span className="text-slate-300 font-bold uppercase text-[7px] mb-0.5">BIO</span>
+                                    <span className="text-slate-500 font-bold uppercase text-[7px] mb-0.5">BIO</span>
                                     <span className="text-[11px] font-bold text-slate-900 leading-none">{formatNumber(data.biosolar)}</span>
                                   </div>
                                   <div className="flex flex-col">
-                                    <span className="text-slate-300 font-bold uppercase text-[7px] mb-0.5">PERT</span>
+                                    <span className="text-slate-500 font-bold uppercase text-[7px] mb-0.5">PERT</span>
                                     <span className="text-[11px] font-bold text-slate-900 leading-none">{formatNumber(data.pertalite)}</span>
                                   </div>
                                   <div className="flex flex-col">
-                                    <span className="text-slate-300 font-bold uppercase text-[7px] mb-0.5">DEX</span>
+                                    <span className="text-slate-500 font-bold uppercase text-[7px] mb-0.5">DEX</span>
                                     <span className="text-[11px] font-bold text-slate-900 leading-none">{formatNumber(data.pertadex)}</span>
                                   </div>
                                 </div>
@@ -726,16 +931,16 @@ const App: React.FC = () => {
                             ))}
                           </div>
                           <div className="flex items-center justify-center gap-4 bg-slate-50 py-2 rounded-xl mt-4">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">TOTAL</span>
+                            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">TOTAL</span>
                             <div className="flex items-baseline gap-1.5">
                               <span className="text-xl font-black text-indigo-600 tabular-nums leading-none">{formatNumber(dashboardStats.grandTotalFuel)}</span>
-                              <span className="text-[9px] text-slate-400 font-bold uppercase leading-none">LTR</span>
+                              <span className="text-[9px] text-slate-600 font-bold uppercase leading-none">LTR</span>
                             </div>
                           </div>
                         </div>
 
                         <div className="flex flex-col py-4 border-t border-slate-100 mt-4 px-2 overflow-visible">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center mb-4">SUB-TOTAL FUEL</span>
+                          <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center mb-4">SUB-TOTAL FUEL</span>
                           <div className="grid grid-cols-3 gap-1 overflow-visible">
                             <div className="flex flex-col items-center overflow-visible">
                               <div className="w-28 h-28 relative overflow-visible">
@@ -746,12 +951,11 @@ const App: React.FC = () => {
                                     </Pie>
                                   </PieChart>
                                 </ResponsiveContainer>
-                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                  <span className="text-[10px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalBiosolar)}</span>
-                                  <span className="text-[7px] font-bold text-slate-400 leading-none">L</span>
-                                </div>
                               </div>
-                              <span className="text-[8px] font-bold text-slate-400 mt-1 uppercase">BIOSOLAR</span>
+                              <div className="flex flex-col items-center mt-2">
+                                <span className="text-[12px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalBiosolar)} <span className="text-[8px]">L</span></span>
+                                <span className="text-[8px] font-bold text-slate-600 mt-1 uppercase">BIOSOLAR</span>
+                              </div>
                             </div>
                             <div className="flex flex-col items-center overflow-visible">
                               <div className="w-28 h-28 relative overflow-visible">
@@ -762,12 +966,11 @@ const App: React.FC = () => {
                                     </Pie>
                                   </PieChart>
                                 </ResponsiveContainer>
-                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                  <span className="text-[10px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertalite)}</span>
-                                  <span className="text-[7px] font-bold text-slate-400 leading-none">L</span>
-                                </div>
                               </div>
-                              <span className="text-[8px] font-bold text-slate-400 mt-1 uppercase">PERTALITE</span>
+                              <div className="flex flex-col items-center mt-2">
+                                <span className="text-[12px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertalite)} <span className="text-[8px]">L</span></span>
+                                <span className="text-[8px] font-bold text-slate-600 mt-1 uppercase">PERTALITE</span>
+                              </div>
                             </div>
                             <div className="flex flex-col items-center overflow-visible">
                               <div className="w-28 h-28 relative overflow-visible">
@@ -778,12 +981,11 @@ const App: React.FC = () => {
                                     </Pie>
                                   </PieChart>
                                 </ResponsiveContainer>
-                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                  <span className="text-[10px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertadex)}</span>
-                                  <span className="text-[7px] font-bold text-slate-400 leading-none">L</span>
-                                </div>
                               </div>
-                              <span className="text-[8px] font-bold text-slate-400 mt-1 uppercase">PERTADEX</span>
+                              <div className="flex flex-col items-center mt-2">
+                                <span className="text-[12px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertadex)} <span className="text-[8px]">L</span></span>
+                                <span className="text-[8px] font-bold text-slate-600 mt-1 uppercase">PERTADEX</span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -796,21 +998,21 @@ const App: React.FC = () => {
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-100 h-full p-8 flex flex-col">
                     <SectionHeader title="Daily Activity Log" subtitle="Detailed operational updates" icon={<ActivityIcon size={18} />} />
                     <div className="flex-1 space-y-6 overflow-y-auto max-h-[1100px] custom-scrollbar pr-2 mt-4">
-                      {activities.length > 0 ? (
-                        activities.map((act, i) => (
+                      {sortedActivities.length > 0 ? (
+                        sortedActivities.map((act, i) => (
                           <div key={i} className="space-y-3">
                             <div className="flex items-center gap-2 sticky top-0 bg-white/95 backdrop-blur-sm py-1.5 z-10 border-b border-slate-50">
                               <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: sites.find(s => s.name === act.site)?.color || '#94a3b8' }}></div>
                               <h4 className="text-sm font-bold text-slate-900 tracking-tight">{act.site}</h4>
-                              <span className="ml-auto text-[9px] font-bold text-slate-300 uppercase tracking-widest">{act.items.length} KEGIATAN</span>
+                              <span className="ml-auto text-[9px] font-bold text-slate-500 uppercase tracking-widest">{act.items.length} KEGIATAN</span>
                             </div>
                             <div className="space-y-3 px-1">
                               {act.items.map((item, j) => (
                                 <div key={j} className="relative pl-5 py-1 group">
-                                  <div className="absolute left-0 top-[12px] w-1.5 h-1.5 rounded-full bg-slate-200 group-hover:bg-indigo-500 transition-colors"></div>
+                                  <div className="absolute left-0 top-[12px] w-1.5 h-1.5 rounded-full bg-slate-300 group-hover:bg-indigo-600 transition-colors"></div>
                                   <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-0.5">{item.category}</span>
-                                    <p className="text-sm text-slate-600 leading-relaxed font-medium">{item.description}</p>
+                                    <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider mb-0.5">{item.category}</span>
+                                    <p className="text-sm text-slate-700 leading-relaxed font-medium">{item.description}</p>
                                   </div>
                                 </div>
                               ))}
@@ -820,7 +1022,7 @@ const App: React.FC = () => {
                       ) : (
                         <div className="flex flex-col items-center justify-center h-48 opacity-40">
                            <ActivityIcon size={40} className="text-slate-300 mb-2" />
-                           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">No data available</p>
+                           <p className="text-xs font-bold uppercase tracking-widest text-slate-600">No data available</p>
                         </div>
                       )}
                     </div>
@@ -831,13 +1033,330 @@ const App: React.FC = () => {
               <div className="flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in zoom-in duration-500">
                  <Database size={56} className="text-slate-200 mb-6" />
                  <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Data Tidak Ditemukan</h2>
-                 <p className="text-slate-500 font-medium text-center max-w-md mb-8">
+                 <p className="text-slate-600 font-semibold text-center max-w-md mb-8">
                     Tidak ada laporan operasional untuk tanggal <span className="text-indigo-600 font-bold">{formattedSelectedDate}</span>. 
                  </p>
                  <button onClick={() => setActiveView('input')} className="flex items-center gap-2 px-8 h-12 bg-indigo-600 text-white rounded-xl shadow-xl hover:bg-indigo-700 transition-all font-bold text-sm uppercase active:scale-95">
                     <PenLine size={18} />
                     <span>Update Data</span>
                  </button>
+              </div>
+            )
+          ) : activeView === 'weekly' ? (
+            weeklyStats ? (
+              <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-in fade-in duration-700">
+                <div className="xl:col-span-3 space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <StatCard 
+                      title="Weekly Total Good Issue" 
+                      value={formatCurrency(weeklyStats.totalIssue)} 
+                      icon={<ArrowUpRight size={24} className="text-emerald-500" />} 
+                    />
+                    <StatCard 
+                      title="Weekly Total Good Receive" 
+                      value={formatCurrency(weeklyStats.totalReceive)} 
+                      icon={<ArrowDownLeft size={24} className="text-rose-500" />} 
+                    />
+                    <StatCard 
+                      title="Weekly Last Stock Value" 
+                      value={formatCurrency(weeklyStats.lastDayStock)} 
+                      icon={<Package size={24} className="text-slate-600" />} 
+                      trend={weeklyStats.stockTrendValue} 
+                      trendClassName={weeklyStats.stockIsPositive ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'} 
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <ChartCard title="Weekly Good Issue & Receive" subtitle="All Field Zona 9" icon={<ArrowLeftRight size={18} />}>
+                      <div className="flex flex-col">
+                        <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                          <span className="w-[40%] text-left">Location</span>
+                          <span className="w-[30%] text-center">Issue Sum</span>
+                          <span className="w-[30%] text-center">Receive Sum</span>
+                        </div>
+                        <div className="space-y-1">
+                          {Object.entries(weeklyStats.siteAgg).filter(([name]) => name !== 'ZONA 9').map(([name, data]: any) => (
+                            <div key={name} className="flex items-center px-2 py-3 hover:bg-slate-50 rounded-xl border-b border-slate-50 last:border-0 transition-colors">
+                              <div className="w-[40%] flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color || '#cbd5e1' }}></span>
+                                <span className="text-xs font-bold text-slate-800 truncate">{name}</span>
+                              </div>
+                              <div className="w-[30%] text-center font-bold text-emerald-700 text-xs tabular-nums">{formatCurrency(data.issued)}</div>
+                              <div className="w-[30%] text-center font-bold text-rose-700 text-xs tabular-nums">{formatCurrency(data.received)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mt-4 pt-0">
+                        <div className="h-28 relative">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                              <Pie data={Object.entries(weeklyStats.siteAgg).filter(([name]) => name !== 'ZONA 9').map(([name, data]: any) => ({ name, value: data.issued, color: data.color })).filter(d => d.value > 0)} innerRadius={20} outerRadius={30} dataKey="value" isAnimationActive={false} stroke="none">
+                                {Object.entries(weeklyStats.siteAgg).filter(([name]) => name !== 'ZONA 9').map(([name, data]: any, idx) => <Cell key={idx} fill={data.color} />)}
+                              </Pie>
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <span className="text-[8px] font-black text-slate-500 uppercase leading-none">ISSUE</span>
+                          </div>
+                        </div>
+                        <div className="h-28 relative">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                              <Pie data={Object.entries(weeklyStats.siteAgg).filter(([name]) => name !== 'ZONA 9').map(([name, data]: any) => ({ name, value: data.received, color: data.color })).filter(d => d.value > 0)} innerRadius={20} outerRadius={30} dataKey="value" isAnimationActive={false} stroke="none">
+                                {Object.entries(weeklyStats.siteAgg).filter(([name]) => name !== 'ZONA 9').map(([name, data]: any, idx) => <Cell key={idx} fill={data.color} />)}
+                              </Pie>
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <span className="text-[8px] font-black text-slate-500 uppercase leading-none">RECV</span>
+                          </div>
+                        </div>
+                      </div>
+                    </ChartCard>
+
+                    <ChartCard title="Weekly Last Stock Value" subtitle={`All Field Zona 9`} icon={<TrendingUp size={18} />}>
+                      <div className="flex flex-col">
+                        <div className="w-full h-[180px] relative overflow-visible">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart margin={{ top: 10, bottom: 10 }}>
+                              <Pie 
+                                data={weeklyLastDaySites.filter(s => s.stock > 0 && s.name !== 'ZONA 9')} 
+                                innerRadius={45} 
+                                outerRadius={60} 
+                                paddingAngle={4} 
+                                dataKey="stock" 
+                                nameKey="name" 
+                                isAnimationActive={true}
+                                labelLine={false}
+                                label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                              >
+                                {weeklyLastDaySites.filter(s => s.stock > 0 && s.name !== 'ZONA 9').map((entry, index) => <Cell key={index} fill={entry.color || '#94a3b8'} stroke="none" />)}
+                              </Pie>
+                              <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="space-y-1 mt-2">
+                          {weeklyLastDaySites.filter(s => s.stock > 0 && s.name !== 'ZONA 9').map((site, index) => (
+                            <div key={index} className="flex items-center justify-between border-b border-slate-50 py-2 last:border-0 transition-colors">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-3 rounded-full" style={{ backgroundColor: site.color || '#cbd5e1' }}></div>
+                                <span className="text-[10px] font-bold text-slate-600 uppercase">{site.name}</span>
+                              </div>
+                              <span className="text-xs font-bold text-slate-900 tabular-nums">{formatCurrency(site.stock)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </ChartCard>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                    <ChartCard title="Weekly Rig Movements" icon={<Truck size={18} />} className="md:col-span-2">
+                      <div className="flex flex-col space-y-3">
+                        {weeklyRigs.length > 0 ? (
+                          weeklyRigs.map((rm, idx) => (
+                            <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0 mb-0.5">
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="w-1.5 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div>
+                                <span className="text-[10px] font-bold text-slate-800 uppercase tracking-tight truncate">
+                                  {rm.site} - {rm.rig_name}
+                                </span>
+                                <span className="ml-auto text-[8px] font-bold text-slate-500 uppercase">{(rm as any).date}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-[9px] text-slate-600 font-semibold ml-3.5 leading-none">
+                                <span className="truncate">{rm.from_loc}</span>
+                                <MoveRight size={10} className="text-indigo-600 shrink-0" />
+                                <span className="truncate">{rm.to_loc}</span>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex flex-col items-center justify-center h-full min-h-[100px] opacity-20">
+                            <Truck size={32} />
+                            <span className="text-[10px] font-bold uppercase mt-2">No Movement</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-center pt-4 border-t border-slate-100 mt-4 overflow-visible">
+                        <h3 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-1">TOTAL MOVE</h3>
+                        <div className="relative w-28 h-28 overflow-visible">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                              <Pie 
+                                data={Object.entries(weeklyStats.rigMovesBySite).map(([name, d]: [string, any]) => ({ name, value: d.count, color: d.color }))} 
+                                innerRadius={28} 
+                                outerRadius={38} 
+                                dataKey="value" 
+                                isAnimationActive={false} 
+                                stroke="none"
+                              >
+                                {Object.values(weeklyStats.rigMovesBySite).map((d: any, idx) => (
+                                  <Cell key={idx} fill={d.color} />
+                                ))}
+                              </Pie>
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                            <span className="text-lg font-black text-slate-900 leading-none">{weeklyStats.totalRigMoves}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </ChartCard>
+
+                    <ChartCard title="Weekly Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-2">
+                       <div className="flex flex-col h-full">
+                        <div className="flex flex-col justify-between pr-1 pb-2">
+                          <div className="grid grid-cols-2 gap-x-8 gap-y-3 w-full">
+                            {Object.entries(weeklyStats.fuelAgg).map(([name, data]: any) => (
+                              <div key={name} className="flex flex-col">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === name)?.color || '#94a3b8' }}></div>
+                                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-tight truncate">{name}</span>
+                                </div>
+                                <div className="flex gap-4 ml-3.5 tabular-nums">
+                                  <div className="flex flex-col">
+                                    <span className="text-slate-500 font-bold uppercase text-[7px] mb-0.5">BIO</span>
+                                    <span className="text-[11px] font-bold text-slate-900 leading-none">{formatNumber(data.biosolar)}</span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-slate-500 font-bold uppercase text-[7px] mb-0.5">PERT</span>
+                                    <span className="text-[11px] font-bold text-slate-900 leading-none">{formatNumber(data.pertalite)}</span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-slate-500 font-bold uppercase text-[7px] mb-0.5">DEX</span>
+                                    <span className="text-[11px] font-bold text-slate-900 leading-none">{formatNumber(data.pertadex)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex items-center justify-center gap-4 bg-slate-50 py-2 rounded-xl mt-4">
+                            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">WEEKLY TOTAL</span>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-xl font-black text-indigo-600 tabular-nums leading-none">
+                                {formatNumber((Object.values(weeklyStats.fuelAgg) as any[]).reduce((acc: number, curr: any) => acc + curr.biosolar + curr.pertalite + curr.pertadex, 0))}
+                              </span>
+                              <span className="text-[9px] text-slate-600 font-bold uppercase leading-none">LTR</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col py-4 border-t border-slate-100 mt-4 px-2 overflow-visible">
+                          <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest text-center mb-4">WEEKLY SUB-TOTAL FUEL</span>
+                          <div className="grid grid-cols-3 gap-1 overflow-visible">
+                            <div className="flex flex-col items-center overflow-visible">
+                              <div className="w-24 h-24 relative overflow-visible">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                                    <Pie data={Object.entries(weeklyStats.fuelAgg).map(([name, data]: any) => ({ name, value: data.biosolar, color: weeklyLastDaySites.find(s => s.name === name)?.color || '#ccc' })).filter(d => d.value > 0)} innerRadius={18} outerRadius={32} dataKey="value" isAnimationActive={false} stroke="none">
+                                      {Object.entries(weeklyStats.fuelAgg).map(([name]: any, idx) => <Cell key={idx} fill={weeklyLastDaySites.find(s => s.name === name)?.color || '#ccc'} />)}
+                                    </Pie>
+                                  </PieChart>
+                                </ResponsiveContainer>
+                              </div>
+                              <div className="flex flex-col items-center mt-2">
+                                <span className="text-[11px] font-black text-slate-900 leading-none">{formatNumber((Object.values(weeklyStats.fuelAgg) as any[]).reduce((acc: number, curr: any) => acc + curr.biosolar, 0))} <span className="text-[7px]">L</span></span>
+                                <span className="text-[7px] font-bold text-slate-600 mt-1 uppercase text-center">BIOSOLAR</span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-center overflow-visible">
+                              <div className="w-24 h-24 relative overflow-visible">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                                    <Pie data={Object.entries(weeklyStats.fuelAgg).map(([name, data]: any) => ({ name, value: data.pertalite, color: weeklyLastDaySites.find(s => s.name === name)?.color || '#ccc' })).filter(d => d.value > 0)} innerRadius={18} outerRadius={32} dataKey="value" isAnimationActive={false} stroke="none">
+                                      {Object.entries(weeklyStats.fuelAgg).map(([name]: any, idx) => <Cell key={idx} fill={weeklyLastDaySites.find(s => s.name === name)?.color || '#ccc'} />)}
+                                    </Pie>
+                                  </PieChart>
+                                </ResponsiveContainer>
+                              </div>
+                              <div className="flex flex-col items-center mt-2">
+                                <span className="text-[11px] font-black text-slate-900 leading-none">{formatNumber((Object.values(weeklyStats.fuelAgg) as any[]).reduce((acc: number, curr: any) => acc + curr.pertalite, 0))} <span className="text-[7px]">L</span></span>
+                                <span className="text-[7px] font-bold text-slate-600 mt-1 uppercase text-center">PERTALITE</span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-center overflow-visible">
+                              <div className="w-24 h-24 relative overflow-visible">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                                    <Pie data={Object.entries(weeklyStats.fuelAgg).map(([name, data]: any) => ({ name, value: data.pertadex, color: weeklyLastDaySites.find(s => s.name === name)?.color || '#ccc' })).filter(d => d.value > 0)} innerRadius={18} outerRadius={32} dataKey="value" isAnimationActive={false} stroke="none">
+                                      {Object.entries(weeklyStats.fuelAgg).map(([name]: any, idx) => <Cell key={idx} fill={weeklyLastDaySites.find(s => s.name === name)?.color || '#ccc'} />)}
+                                    </Pie>
+                                  </PieChart>
+                                </ResponsiveContainer>
+                              </div>
+                              <div className="flex flex-col items-center mt-2">
+                                <span className="text-[11px] font-black text-slate-900 leading-none">{formatNumber((Object.values(weeklyStats.fuelAgg) as any[]).reduce((acc: number, curr: any) => acc + curr.pertadex, 0))} <span className="text-[7px]">L</span></span>
+                                <span className="text-[7px] font-bold text-slate-600 mt-1 uppercase text-center">PERTADEX</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </ChartCard>
+                  </div>
+                  
+                  {/* ZONA 9 Weekly Update positioned below the charts for space efficiency */}
+                  <div className="mt-8">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-rose-100 bg-rose-50/10 transition-all hover:bg-white group">
+                      <div className="flex items-center gap-2 border-b border-rose-100 pb-2 mb-3">
+                        <div className="w-2 h-4 rounded-full bg-rose-500"></div>
+                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-tight">ZONA 9</h4>
+                      </div>
+                      <div className="flex items-start">
+                         <AutoResizeTextarea 
+                            value={weeklyUpdates['ZONA 9']} 
+                            onChange={(e) => setWeeklyUpdates({...weeklyUpdates, ['ZONA 9']: e.target.value})}
+                            placeholder="Enter weekly updates for ZONA 9..."
+                            className="w-full bg-transparent border-none focus:ring-0 text-sm font-bold text-slate-800 resize-none outline-none leading-relaxed p-0 h-auto min-h-[80px]"
+                         />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="xl:col-span-2">
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-100 h-full p-8 flex flex-col">
+                    <div className="flex items-center justify-between mb-6">
+                      <SectionHeader title="Weekly Updates" subtitle="Other Sites Summary" icon={<Edit3 size={18} />} />
+                      <button 
+                        onClick={handleSaveWeeklyUpdates} 
+                        disabled={isSavingWeeklyUpdates} 
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-indigo-700 transition-all disabled:opacity-50"
+                      >
+                        {isSavingWeeklyUpdates ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                        <span>Save Updates</span>
+                      </button>
+                    </div>
+                    <div className="flex-1 space-y-6">
+                      {Object.keys(weeklyUpdates).filter(site => site !== 'ZONA 9').map((site) => (
+                        <div key={site} className="space-y-3 p-4 bg-slate-50/50 rounded-xl border border-slate-100 transition-all hover:bg-white group">
+                          <div className="flex items-center gap-2 border-b border-slate-100 pb-2 mb-3">
+                            <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === site)?.color || '#94a3b8' }}></div>
+                            <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight">{site}</h4>
+                          </div>
+                          <div className="flex items-start">
+                             <AutoResizeTextarea 
+                                value={weeklyUpdates[site]} 
+                                onChange={(e) => setWeeklyUpdates({...weeklyUpdates, [site]: e.target.value})}
+                                placeholder={`Enter weekly updates for ${site}...`}
+                                className="w-full bg-transparent border-none focus:ring-0 text-sm font-semibold text-slate-700 resize-none outline-none leading-relaxed p-0 h-auto"
+                             />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in zoom-in duration-500">
+                 <Database size={56} className="text-slate-200 mb-6" />
+                 <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Data Mingguan Tidak Ditemukan</h2>
+                 <p className="text-slate-600 font-semibold text-center max-w-md mb-8">
+                    Silakan pilih rentang tanggal yang lain atau pastikan data untuk rentang ini sudah terisi.
+                 </p>
               </div>
             )
           ) : (
@@ -850,7 +1369,7 @@ const App: React.FC = () => {
                     </div>
                     <div>
                       <h2 className="text-xl font-black text-white">Input Data Operasional</h2>
-                      <p className="text-slate-400 text-xs font-medium uppercase tracking-widest">Update data untuk {formattedSelectedDate}</p>
+                      <p className="text-slate-300 text-xs font-semibold uppercase tracking-widest">Update data untuk {formattedSelectedDate}</p>
                     </div>
                   </div>
                 </div>
@@ -858,11 +1377,11 @@ const App: React.FC = () => {
                   <table className="w-full text-left border-collapse min-w-[1400px]">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-100">
-                        <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest w-40">Site Details</th>
-                        <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center border-l border-slate-100 w-[380px]">Warehouse Value (IDR)</th>
-                        <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center border-l border-slate-100 w-80">Fuel Usage (L)</th>
-                        <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center border-l border-slate-100 w-32">POB</th>
-                        <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center border-l border-slate-100">Rig Logistics</th>
+                        <th className="p-6 text-[10px] font-black text-slate-600 uppercase tracking-widest w-40">Site Details</th>
+                        <th className="p-6 text-[10px] font-black text-slate-600 uppercase tracking-widest text-center border-l border-slate-100 w-[380px]">Warehouse Value (IDR)</th>
+                        <th className="p-6 text-[10px] font-black text-slate-600 uppercase tracking-widest text-center border-l border-slate-100 w-80">Fuel Usage (L)</th>
+                        <th className="p-6 text-[10px] font-black text-slate-600 uppercase tracking-widest text-center border-l border-slate-100 w-32">POB</th>
+                        <th className="p-6 text-[10px] font-black text-slate-600 uppercase tracking-widest text-center border-l border-slate-100">Rig Logistics</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -878,36 +1397,36 @@ const App: React.FC = () => {
                               <td className="p-6 align-top">
                                 <div className="flex items-center gap-3 mb-2">
                                   <div className="w-2 h-6 rounded-full" style={{ backgroundColor: s.color }}></div>
-                                  <h3 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2">
+                                  <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
                                     {siteName}
                                     {saved && <CheckCircle2 size={14} className="text-emerald-500" />}
                                   </h3>
                                 </div>
-                                <input type="text" value={s.color} onChange={e => updateLocalSite(siteName, 'color', e.target.value)} className="px-2 py-1 bg-slate-100 border-none rounded text-[9px] font-bold text-slate-500 outline-none w-20 uppercase" />
+                                <input type="text" value={s.color} onChange={e => updateLocalSite(siteName, 'color', e.target.value)} className="px-2 py-1 bg-slate-100 border-none rounded text-[9px] font-bold text-slate-700 outline-none w-20 uppercase" />
                               </td>
                               <td className="p-6 border-l border-slate-100 align-top">
                                 <div className="space-y-4">
                                   <div className="space-y-1">
-                                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Total Stock Asset</label>
+                                    <label className="text-[9px] font-black text-slate-600 uppercase ml-1">Total Stock Asset</label>
                                     <input type="text" value={s.stock === 0 ? '0' : formatNumber(s.stock)} onChange={e => {
                                         const raw = e.target.value.replace(/\D/g, '');
                                         updateLocalSite(siteName, 'stock', raw === '' ? 0 : Number(raw));
-                                      }} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none text-sm focus:ring-2 focus:ring-indigo-500/20" />
+                                      }} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none text-sm focus:ring-2 focus:ring-indigo-500/20" />
                                   </div>
                                   <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
-                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Good Issue</label>
+                                      <label className="text-[9px] font-black text-slate-600 uppercase ml-1">Good Issue</label>
                                       <input type="text" value={s.issued === 0 ? '0' : formatNumber(s.issued)} onChange={e => {
                                           const raw = e.target.value.replace(/\D/g, '');
                                           updateLocalSite(siteName, 'issued', raw === '' ? 0 : Number(raw));
-                                        }} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-emerald-600 outline-none text-sm" />
+                                        }} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-emerald-700 outline-none text-sm" />
                                     </div>
                                     <div className="space-y-1">
-                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Good Receive</label>
+                                      <label className="text-[9px] font-black text-slate-600 uppercase ml-1">Good Receive</label>
                                       <input type="text" value={s.received === 0 ? '0' : formatNumber(s.received)} onChange={e => {
                                           const raw = e.target.value.replace(/\D/g, '');
                                           updateLocalSite(siteName, 'received', raw === '' ? 0 : Number(raw));
-                                        }} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-rose-600 outline-none text-sm" />
+                                        }} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-rose-700 outline-none text-sm" />
                                     </div>
                                   </div>
                                 </div>
@@ -915,24 +1434,24 @@ const App: React.FC = () => {
                               <td className="p-6 border-l border-slate-100 align-top">
                                 <div className="grid grid-cols-1 gap-4">
                                   <div className="space-y-1">
-                                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Biosolar</label>
-                                    <input type="number" value={f.biosolar} onChange={e => updateLocalFuel(siteName, 'biosolar', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none text-sm" />
+                                    <label className="text-[9px] font-black text-slate-600 uppercase ml-1">Biosolar</label>
+                                    <input type="number" value={f.biosolar} onChange={e => updateLocalFuel(siteName, 'biosolar', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none text-sm" />
                                   </div>
                                   <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
-                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Pertalite</label>
-                                      <input type="number" value={f.pertalite} onChange={e => updateLocalFuel(siteName, 'pertalite', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none text-sm" />
+                                      <label className="text-[9px] font-black text-slate-600 uppercase ml-1">Pertalite</label>
+                                      <input type="number" value={f.pertalite} onChange={e => updateLocalFuel(siteName, 'pertalite', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none text-sm" />
                                     </div>
                                     <div className="space-y-1">
-                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Pertadex</label>
-                                      <input type="number" value={f.pertadex} onChange={e => updateLocalFuel(siteName, 'pertadex', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none text-sm" />
+                                      <label className="text-[9px] font-black text-slate-600 uppercase ml-1">Pertadex</label>
+                                      <input type="number" value={f.pertadex} onChange={e => updateLocalFuel(siteName, 'pertadex', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none text-sm" />
                                     </div>
                                   </div>
                                 </div>
                               </td>
                               <td className="p-6 border-l border-slate-100 align-top">
                                 <div className="space-y-1">
-                                  <label className="text-[9px] font-black text-slate-400 uppercase text-center block">Count</label>
+                                  <label className="text-[9px] font-black text-slate-600 uppercase text-center block">Count</label>
                                   <input type="number" value={s.pob} onChange={e => updateLocalSite(siteName, 'pob', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-black text-slate-900 outline-none text-sm text-center" />
                                 </div>
                               </td>
@@ -941,16 +1460,16 @@ const App: React.FC = () => {
                                   {siteRigs.map((rm, idx) => (
                                     <div key={idx} className="flex items-center gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-white">
                                       <div className="grid grid-cols-3 gap-2 flex-1">
-                                        <input type="text" value={rm.rig_name} onChange={e => updateLocalRigMove(siteName, idx, 'rig_name', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="Rig" />
-                                        <input type="text" value={rm.from_loc} onChange={e => updateLocalRigMove(siteName, idx, 'from_loc', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="From" />
-                                        <input type="text" value={rm.to_loc} onChange={e => updateLocalRigMove(siteName, idx, 'to_loc', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="To" />
+                                        <input type="text" value={rm.rig_name} onChange={e => updateLocalRigMove(siteName, idx, 'rig_name', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-800 outline-none" placeholder="Rig" />
+                                        <input type="text" value={rm.from_loc} onChange={e => updateLocalRigMove(siteName, idx, 'from_loc', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-800 outline-none" placeholder="From" />
+                                        <input type="text" value={rm.to_loc} onChange={e => updateLocalRigMove(siteName, idx, 'to_loc', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-800 outline-none" placeholder="To" />
                                       </div>
-                                      <button onClick={() => deleteLocalRigMove(siteName, idx)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
+                                      <button onClick={() => deleteLocalRigMove(siteName, idx)} className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
                                         <Trash2 size={14} />
                                       </button>
                                     </div>
                                   ))}
-                                  <button onClick={() => addLocalRigMove(siteName)} className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-[10px] font-bold text-slate-400 hover:bg-slate-100 hover:text-indigo-600 transition-all">
+                                  <button onClick={() => addLocalRigMove(siteName)} className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-[10px] font-bold text-slate-600 hover:bg-slate-100 hover:text-indigo-700 transition-all">
                                     <Plus size={14} /> Add Rig Move
                                   </button>
                                 </div>
@@ -961,19 +1480,19 @@ const App: React.FC = () => {
                                   <div className="bg-slate-50/30 p-6 flex flex-col gap-4">
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-2">
-                                        <ActivityIcon size={14} className="text-slate-400" />
-                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Activity Log - {siteName}</span>
+                                        <ActivityIcon size={14} className="text-slate-500" />
+                                        <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Activity Log - {siteName}</span>
                                       </div>
-                                      <button onClick={() => addLocalActivity(siteName)} className="flex items-center gap-1.5 px-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm">
+                                      <button onClick={() => addLocalActivity(siteName)} className="flex items-center gap-1.5 px-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-all shadow-sm">
                                         <Plus size={12} /> Add Activity
                                       </button>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                       {a.items.map((item, idx) => (
                                         <div key={idx} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col gap-3 relative group/log">
-                                          <button onClick={() => deleteLocalActivity(siteName, idx)} className="absolute top-2 right-2 p-1.5 text-slate-200 hover:text-rose-500 transition-all opacity-0 group-hover/log:opacity-100"><Trash2 size={12} /></button>
-                                          <input type="text" value={item.category} onChange={e => updateLocalActivity(siteName, idx, 'category', e.target.value)} className="px-2 py-1 bg-slate-50 border-none rounded text-[9px] font-black text-indigo-600 outline-none w-fit uppercase" placeholder="CATEGORY" />
-                                          <textarea value={item.description} onChange={e => updateLocalActivity(siteName, idx, 'description', e.target.value)} rows={2} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 outline-none resize-none focus:bg-white transition-all" placeholder="Enter activity details..." />
+                                          <button onClick={() => deleteLocalActivity(siteName, idx)} className="absolute top-2 right-2 p-1.5 text-slate-400 hover:text-rose-600 transition-all opacity-0 group-hover/log:opacity-100"><Trash2 size={12} /></button>
+                                          <input type="text" value={item.category} onChange={e => updateLocalActivity(siteName, idx, 'category', e.target.value)} className="px-2 py-1 bg-slate-50 border-none rounded text-[9px] font-black text-indigo-700 outline-none w-fit uppercase" placeholder="CATEGORY" />
+                                          <textarea value={item.description} onChange={e => updateLocalActivity(siteName, idx, 'description', e.target.value)} rows={2} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none resize-none focus:bg-white transition-all" placeholder="Enter activity details..." />
                                         </div>
                                       ))}
                                     </div>
@@ -995,8 +1514,8 @@ const App: React.FC = () => {
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         @media print { .no-print { display: none !important; } }
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
