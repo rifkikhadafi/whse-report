@@ -297,41 +297,103 @@ const App: React.FC = () => {
   const handleDownloadPDF = async () => {
     if (!dashboardRef.current) return;
     setIsDownloading(true);
-    setProgress('Membangun Kanvas Laporan...');
+    setProgress('Mempersiapkan Layout Laporan (Mohon Tunggu)...');
+    
     try {
-      // Pastikan scroll berada di atas sebelum capture
+      // 1. Scroll container ke atas sebelum proses capture dimulai
       const mainElement = dashboardRef.current.parentElement;
       if (mainElement) mainElement.scrollTop = 0;
       
-      await new Promise(r => setTimeout(r, 800)); // Tunggu rendering stabil
+      // Delay sedikit agar rendering browser stabil
+      await new Promise(r => setTimeout(r, 1500));
 
       const element = dashboardRef.current;
-      const canvas = await html2canvas(element, { 
-        scale: 1.5, // Scale dikurangi sedikit agar performa lebih stabil namun tetap tajam
-        useCORS: true, 
+      
+      // 2. Gunakan html2canvas dengan opsi pembersihan DOM klon
+      const canvas = await html2canvas(element, {
+        scale: 2, // Skala 2x untuk kualitas cetak tajam
+        useCORS: true,
         backgroundColor: '#f8fafc',
-        height: element.scrollHeight, // Capture seluruh tinggi konten
-        windowHeight: element.scrollHeight, // Pastikan viewport capture mencakup seluruh konten
-        logging: false
+        height: element.scrollHeight,
+        width: element.offsetWidth,
+        windowWidth: 1600, // Paksa lebar tetap agar layout tidak responsif/berantakan
+        windowHeight: element.scrollHeight,
+        logging: false,
+        imageTimeout: 0,
+        onclone: (clonedDoc) => {
+          // Cari container dashboard di dalam dokumen klon
+          const clonedElement = clonedDoc.body.querySelector('[ref="dashboardRef"]') || 
+                                clonedDoc.body.querySelector('.p-4.lg\\:p-10');
+          
+          if (clonedElement) {
+            const el = clonedElement as HTMLElement;
+            el.style.width = '1600px'; // Set lebar tetap untuk PDF
+            el.style.height = 'auto';
+            el.style.overflow = 'visible';
+            el.style.padding = '40px'; // Padding standar untuk margin PDF
+            
+            // Hapus properti yang menyebabkan pergeseran teks atau cropping
+            const allElements = clonedDoc.querySelectorAll('*');
+            allElements.forEach((node: any) => {
+              // Nonaktifkan semua animasi dan transisi
+              node.style.transition = 'none';
+              node.style.animation = 'none';
+              node.style.transform = 'none';
+              
+              // Perbaiki masalah line-height yang menyebabkan teks terpotong bawahnya
+              if (node.tagName === 'SPAN' || node.tagName === 'P' || node.tagName === 'H3' || node.tagName === 'H1') {
+                const style = window.getComputedStyle(node);
+                if (style.lineHeight === 'normal' || parseFloat(style.lineHeight) < 1.2) {
+                  node.style.lineHeight = '1.4';
+                }
+                node.style.textRendering = 'optimizeLegibility';
+              }
+            });
+
+            // Pastikan semua area scrollable menjadi terlihat sepenuhnya
+            const scrollables = clonedDoc.querySelectorAll('.overflow-y-auto, .overflow-x-auto, .custom-scrollbar');
+            scrollables.forEach((s: any) => {
+              s.style.overflow = 'visible';
+              s.style.height = 'auto';
+              s.style.maxHeight = 'none';
+              s.style.width = 'auto';
+            });
+
+            // Perbaiki elemen sticky agar posisinya tetap benar di PDF
+            const stickies = clonedDoc.querySelectorAll('.sticky');
+            stickies.forEach((s: any) => {
+              s.style.position = 'relative';
+              s.style.top = '0';
+              s.style.zIndex = '1';
+            });
+          }
+        }
       });
 
-      setProgress('Membuat Dokumen PDF...');
-      const imgData = canvas.toDataURL('image/jpeg', 0.9); // Menggunakan JPEG untuk ukuran file lebih optimal
-      const pdf = new jsPDF({ 
-        orientation: 'landscape', 
-        unit: 'px', 
-        format: [canvas.width, canvas.height] 
+      setProgress('Membangun Berkas PDF...');
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      
+      // Konversi kanvas ke data gambar JPEG (kualitas tinggi)
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'px',
+        format: [imgWidth, imgHeight],
+        hotfixes: ['px_pt'] // Perbaikan kalkulasi unit piksel
       });
 
-      pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
-      pdf.save(`Zona9_Report_${selectedDate}.pdf`);
-      showToast('Laporan berhasil diunduh!');
-    } catch (e) { 
-      console.error(e);
-      showToast('Gagal download PDF', true); 
-    } finally { 
-      setIsDownloading(false); 
-      setProgress(''); 
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight, undefined, 'FAST');
+      pdf.save(`Zona9_Dashboard_Report_${selectedDate}.pdf`);
+      
+      showToast('PDF Berhasil Diunduh!');
+    } catch (e) {
+      console.error('Export Error:', e);
+      showToast('Gagal mengunduh PDF, silakan coba lagi.', true);
+    } finally {
+      setIsDownloading(false);
+      setProgress('');
     }
   };
 
@@ -388,7 +450,7 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-md flex flex-col items-center justify-center text-white">
           <Loader2 className="w-16 h-16 text-indigo-400 animate-spin mb-6" />
           <h2 className="text-2xl font-black mb-2 tracking-tight">Mengekspor Laporan</h2>
-          <p className="text-slate-300 font-medium">{progress}</p>
+          <p className="text-slate-300 font-medium text-center px-6">{progress}</p>
         </div>
       )}
 
@@ -411,7 +473,6 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-1 overflow-y-auto h-screen scroll-smooth">
-        {/* Kontainer ref dipindahkan ke sini agar tidak terpotong oleh overflow h-screen */}
         <div className="p-4 lg:p-10 min-h-full" ref={dashboardRef}>
           <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 relative z-50">
             <div>
