@@ -90,11 +90,15 @@ const StatCard: React.FC<{ title: string; value: string; icon: React.ReactNode; 
 const AutoResizeTextarea = ({ value, onChange, placeholder, className, readOnly = false }: { value: string; onChange?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void; placeholder: string; className: string; readOnly?: boolean }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
+  const adjustHeight = () => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
+  };
+
+  useEffect(() => {
+    adjustHeight();
   }, [value]);
 
   return (
@@ -103,7 +107,7 @@ const AutoResizeTextarea = ({ value, onChange, placeholder, className, readOnly 
       value={value}
       onChange={onChange}
       placeholder={placeholder}
-      className={className}
+      className={`${className} overflow-hidden`}
       rows={1}
       readOnly={readOnly}
     />
@@ -135,7 +139,6 @@ const renderStockPercentLabel = ({ cx, cy, midAngle, outerRadius, percent, fill 
 };
 
 const NumericInput = ({ label, value, onChange }: { label: string; value: number; onChange: (val: number) => void }) => {
-  // If value is 0, show empty string for natural typing (replaces 0 immediately)
   const [displayValue, setDisplayValue] = useState(value === 0 ? "" : formatNumber(value));
 
   useEffect(() => {
@@ -762,53 +765,231 @@ const App: React.FC = () => {
           ) : (
             (activeView === 'dashboard' || activeView === 'weekly') ? (
               (activeView === 'dashboard' ? dashboardStats : weeklyStats) ? (
-                <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-in fade-in duration-700">
-                  <div className="xl:col-span-3 space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <StatCard title={activeView === 'weekly' ? "Weekly Good Issue" : "Total Good Issue"} value={formatCurrency(activeView === 'weekly' ? weeklyStats!.totalIssue : dashboardStats!.totalGoodIssue)} icon={<ArrowUpRight size={24} className="text-emerald-500" />} />
-                      <StatCard title={activeView === 'weekly' ? "Weekly Good Receive" : "Total Good Receive"} value={formatCurrency(activeView === 'weekly' ? weeklyStats!.totalReceive : dashboardStats!.totalGoodReceive)} icon={<ArrowDownLeft size={24} className="text-rose-500" />} />
-                      <StatCard title={activeView === 'weekly' ? "Last Stock Value" : "Total Stock Value"} value={formatCurrency(activeView === 'weekly' ? weeklyStats!.lastDayStock : dashboardStats!.totalStockValue)} icon={<Package size={24} className="text-slate-600" />} trend={activeView === 'weekly' ? weeklyStats!.stockTrendValue : dashboardStats!.trends.stock} trendClassName={(activeView === 'weekly' ? weeklyStats!.stockIsPositive : dashboardStats!.trends.stockIsPositive) ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'} />
-                    </div>
+                activeView === 'weekly' ? (
+                  /* WEEKLY DASHBOARD VIEW LAYOUT - Replicated structure from Daily Dashboard */
+                  <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-in fade-in duration-700 overflow-visible items-stretch">
+                    {/* Left Column (3/5 width) */}
+                    <div className="xl:col-span-3 space-y-8 overflow-visible flex flex-col">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <StatCard title="Weekly Good Issue" value={formatCurrency(weeklyStats!.totalIssue)} icon={<ArrowUpRight size={24} className="text-emerald-500" />} />
+                        <StatCard title="Weekly Good Receive" value={formatCurrency(weeklyStats!.totalReceive)} icon={<ArrowDownLeft size={24} className="text-rose-500" />} />
+                        <StatCard title="Last Stock Value" value={formatCurrency(weeklyStats!.lastDayStock)} icon={<Package size={24} className="text-slate-600" />} trend={weeklyStats!.stockTrendValue} trendClassName={weeklyStats!.stockIsPositive ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'} />
+                      </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <ChartCard title={activeView === 'weekly' ? "Weekly Good Issue & Receive" : "Good Issue & Receive"} icon={<ArrowLeftRight size={18} />}>
-                        <div className="flex flex-col">
-                          <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                            <span className="w-[40%]">Location</span><span className="w-[30%] text-center">Issue</span><span className="w-[30%] text-center">Receive</span>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <ChartCard title="Weekly Good Issue & Receive" icon={<ArrowLeftRight size={18} />}>
+                          <div className="flex flex-col">
+                            <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                              <span className="w-[40%]">Location</span><span className="w-[30%] text-center">Issue</span><span className="w-[30%] text-center">Receive</span>
+                            </div>
+                            {Object.entries(weeklyStats!.siteAgg).map(([name, data]: any) => (
+                              <div key={name} className="flex items-center px-2 py-3 border-b border-slate-50 last:border-0">
+                                <div className="w-[40%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-xs font-bold text-slate-800 truncate">{name}</span></div>
+                                <div className="w-[30%] text-center font-bold text-emerald-700 text-xs tabular-nums">{data.issued > 0 ? formatCurrency(data.issued) : '-'}</div>
+                                <div className="w-[30%] text-center font-bold text-rose-700 text-xs tabular-nums">{data.received > 0 ? formatCurrency(data.received) : '-'}</div>
+                              </div>
+                            ))}
                           </div>
-                          {Object.entries(activeView === 'weekly' ? weeklyStats!.siteAgg : sites.reduce((acc: any, curr) => { if(curr.name !== 'ZONA 9') acc[curr.name] = { issued: curr.issued, received: curr.received, color: curr.color }; return acc; }, {})).map(([name, data]: any) => (
-                            <div key={name} className="flex items-center px-2 py-3 border-b border-slate-50 last:border-0">
-                              <div className="w-[40%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-xs font-bold text-slate-800 truncate">{name}</span></div>
-                              <div className="w-[30%] text-center font-bold text-emerald-700 text-xs tabular-nums">{data.issued > 0 ? formatCurrency(data.issued) : '-'}</div>
-                              <div className="w-[30%] text-center font-bold text-rose-700 text-xs tabular-nums">{data.received > 0 ? formatCurrency(data.received) : '-'}</div>
+                        </ChartCard>
+                        <ChartCard title="Weekly Stock Value" icon={<TrendingUp size={18} />}>
+                          <div className="w-full h-[180px] relative">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie data={weeklyLastDaySites.filter(s => s.stock > 0 && s.name !== 'ZONA 9')} innerRadius={45} outerRadius={60} paddingAngle={4} dataKey="stock" nameKey="name" isAnimationActive={false} labelLine={false} label={renderStockPercentLabel}>
+                                  {weeklyLastDaySites.filter(s => s.stock > 0 && s.name !== 'ZONA 9').map((entry, index) => <Cell key={index} fill={entry.color} stroke="none" />)}
+                                </Pie>
+                                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="w-full space-y-2 pt-2">
+                            {weeklyLastDaySites.filter(s => s.stock > 0 && s.name !== 'ZONA 9').map((site, index) => (
+                              <div key={index} className="flex items-center justify-between border-b border-slate-50 pb-2 last:border-0">
+                                <div className="flex items-center gap-2"><div className="w-1.5 h-3 rounded-full" style={{ backgroundColor: site.color }}></div><span className="text-[10px] font-bold text-slate-600 uppercase">{site.name}</span></div>
+                                <span className="text-xs font-bold text-slate-900 tabular-nums">{formatCurrency(site.stock)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </ChartCard>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                        <ChartCard title="Weekly Rig Move" icon={<Truck size={18} />} className="md:col-span-1">
+                          <div className="flex flex-col space-y-3">
+                            {weeklyRigs.length > 0 ? (
+                              weeklyRigs.slice(0, 5).map((rm, idx) => (
+                                <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0">
+                                  <div className="flex items-center gap-2 mb-1"><div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div><span className="text-[10px] font-bold text-slate-700 uppercase truncate">{rm.site} - {rm.rig_name}</span></div>
+                                  <div className="flex items-center gap-2 text-[9px] text-slate-600 font-semibold ml-3.5"><span className="truncate">{rm.from_loc}</span><MoveRight size={10} className="text-indigo-600 shrink-0" /><span className="truncate">{rm.to_loc}</span></div>
+                                </div>
+                              ))
+                            ) : <div className="text-center py-10 opacity-20"><Truck size={32} className="mx-auto" /></div>}
+                          </div>
+                          <div className="flex flex-col items-center pt-4 border-t border-slate-100 mt-4">
+                            <h3 className="text-[10px] font-bold text-slate-600 uppercase mb-1">WEEKLY MOVE</h3>
+                            <div className="relative w-28 h-28">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Pie data={weeklyStats!.rigMovesBySite.length > 0 ? weeklyStats!.rigMovesBySite : [{ value: 1, color: '#f1f5f9' }]} innerRadius={28} outerRadius={38} dataKey="value" isAnimationActive={false} stroke="none">
+                                    {weeklyStats!.rigMovesBySite.length > 0 ? weeklyStats!.rigMovesBySite.map((entry: any, index: number) => <Cell key={index} fill={entry.color} />) : <Cell fill="#f1f5f9" />}
+                                  </Pie>
+                                </PieChart>
+                              </ResponsiveContainer>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span className="text-lg font-black text-slate-900 leading-none">{weeklyStats!.totalRigMoves}</span></div>
                             </div>
-                          ))}
+                          </div>
+                        </ChartCard>
+
+                        <ChartCard title="Weekly Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-3">
+                          <div className="grid grid-cols-2 gap-x-8 gap-y-3 w-full pb-4">
+                            {Object.entries(weeklyStats!.fuelAgg).map(([name, data]: any) => ({ name, ...data })).map((data: any) => (
+                              <div key={data.name} className="flex flex-col">
+                                <div className="flex items-center gap-2 mb-1"><div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === data.name)?.color }}></div><span className="text-[10px] font-bold text-slate-600 uppercase truncate">{data.name}</span></div>
+                                <div className="flex gap-4 ml-3.5 tabular-nums text-[11px] font-bold text-slate-900 leading-none">
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">BIO</span><span>{formatNumber(data.biosolar)}</span></div>
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">PERTALITE</span><span>{formatNumber(data.pertalite)}</span></div>
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">DEX</span><span>{formatNumber(data.pertadex)}</span></div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex items-center justify-center gap-4 bg-slate-50 py-2 rounded-xl mt-auto">
+                            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">TOTAL CONSUMPTION</span>
+                            <div className="flex items-baseline gap-1.5"><span className="text-xl font-black text-indigo-600">{formatNumber(weeklyStats!.grandTotalFuel)}</span><span className="text-[9px] text-slate-600 font-bold uppercase">LTR</span></div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1 pt-6 border-t border-slate-100 mt-6">
+                             <div className="flex flex-col items-center">
+                               <div className="w-24 h-24 relative">
+                                 <ResponsiveContainer width="100%" height="100%">
+                                   <PieChart>
+                                     <Pie data={weeklyStats!.biosolarSegments} innerRadius={20} outerRadius={35} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                       {weeklyStats!.biosolarSegments.map((entry: any, idx: number) => <Cell key={idx} fill={entry.color} />)}
+                                     </Pie>
+                                   </PieChart>
+                                 </ResponsiveContainer>
+                               </div>
+                               <span className="text-[11px] font-black text-slate-900 leading-none mt-1">{formatNumber(weeklyStats!.totalBiosolar)} L</span>
+                               <span className="text-[8px] font-bold text-slate-500 uppercase mt-1 text-center leading-tight">BIOSOLAR</span>
+                             </div>
+                             <div className="flex flex-col items-center">
+                               <div className="w-24 h-24 relative">
+                                 <ResponsiveContainer width="100%" height="100%">
+                                   <PieChart>
+                                     <Pie data={weeklyStats!.pertaliteSegments} innerRadius={20} outerRadius={35} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                       {weeklyStats!.pertaliteSegments.map((entry: any, idx: number) => <Cell key={idx} fill={entry.color} />)}
+                                     </Pie>
+                                   </PieChart>
+                                 </ResponsiveContainer>
+                               </div>
+                               <span className="text-[11px] font-black text-slate-900 leading-none mt-1">{formatNumber(weeklyStats!.totalPertalite)} L</span>
+                               <span className="text-[8px] font-bold text-slate-500 uppercase mt-1 text-center leading-tight">PERTALITE</span>
+                             </div>
+                             <div className="flex flex-col items-center">
+                               <div className="w-24 h-24 relative">
+                                 <ResponsiveContainer width="100%" height="100%">
+                                   <PieChart>
+                                     <Pie data={weeklyStats!.pertadexSegments} innerRadius={20} outerRadius={35} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                       {weeklyStats!.pertadexSegments.map((entry: any, idx: number) => <Cell key={idx} fill={entry.color} />)}
+                                     </Pie>
+                                   </PieChart>
+                                 </ResponsiveContainer>
+                               </div>
+                               <span className="text-[11px] font-black text-slate-900 leading-none mt-1">{formatNumber(weeklyStats!.totalPertadex)} L</span>
+                               <span className="text-[8px] font-bold text-slate-500 uppercase mt-1 text-center leading-tight">PERTADEX</span>
+                             </div>
+                          </div>
+                        </ChartCard>
+                      </div>
+
+                      {/* Weekly Update Zona 9 - Ensure auto-height and bottom alignment */}
+                      <div className="flex-1 flex flex-col pt-8 overflow-visible">
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-full flex flex-col overflow-visible">
+                          <SectionHeader title="Weekly Update Zona 9" icon={<Edit3 size={18} />} />
+                          <div className="flex-1 mt-4 overflow-visible flex flex-col">
+                            <AutoResizeTextarea 
+                              value={weeklyUpdates['ZONA 9'] || ''} 
+                              onChange={(e) => setWeeklyUpdates({...weeklyUpdates, ['ZONA 9']: e.target.value})} 
+                              placeholder="Catatan mingguan..." 
+                              className="w-full bg-slate-50/50 p-6 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 resize-none outline-none leading-relaxed h-auto overflow-hidden flex-1" 
+                              readOnly={isExportMode} 
+                            />
+                          </div>
                         </div>
-                      </ChartCard>
-                      <ChartCard title={activeView === 'weekly' ? "Weekly Stock Value" : "Stock Value"} icon={<TrendingUp size={18} />}>
-                        <div className="w-full h-[180px] relative">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie data={(activeView === 'weekly' ? weeklyLastDaySites : sites).filter(s => s.stock > 0 && s.name !== 'ZONA 9')} innerRadius={45} outerRadius={60} paddingAngle={4} dataKey="stock" nameKey="name" isAnimationActive={false} labelLine={false} label={renderStockPercentLabel}>
-                                {(activeView === 'weekly' ? weeklyLastDaySites : sites).filter(s => s.stock > 0 && s.name !== 'ZONA 9').map((entry, index) => <Cell key={index} fill={entry.color} stroke="none" />)}
-                              </Pie>
-                              <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                            </PieChart>
-                          </ResponsiveContainer>
-                        </div>
-                        <div className="w-full space-y-2 pt-2">
-                          {(activeView === 'weekly' ? weeklyLastDaySites : sites).filter(s => s.stock > 0 && s.name !== 'ZONA 9').map((site, index) => (
-                            <div key={index} className="flex items-center justify-between border-b border-slate-50 pb-2 last:border-0">
-                              <div className="flex items-center gap-2"><div className="w-1.5 h-3 rounded-full" style={{ backgroundColor: site.color }}></div><span className="text-[10px] font-bold text-slate-600 uppercase">{site.name}</span></div>
-                              <span className="text-xs font-bold text-slate-900 tabular-nums">{formatCurrency(site.stock)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </ChartCard>
+                      </div>
                     </div>
 
-                    <div className={`grid grid-cols-1 ${activeView === 'weekly' ? 'md:grid-cols-3' : 'md:grid-cols-4'} gap-8`}>
-                      {activeView !== 'weekly' && (
+                    {/* Right Column (2/5 width) - Weekly Update Sites */}
+                    <div className="xl:col-span-2 flex flex-col overflow-visible">
+                      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-full flex flex-col overflow-visible">
+                        <SectionHeader title="Weekly Update Sites" icon={<Edit3 size={18} />} />
+                        <div className="flex-1 space-y-6 mt-4 overflow-visible flex flex-col">
+                          {Object.keys(weeklyUpdates).filter(site => site !== 'ZONA 9').map((site) => (
+                            <div key={site} className="space-y-3 p-4 bg-slate-50/50 rounded-xl border border-slate-100 overflow-visible">
+                              <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                                <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === site)?.color }}></div>
+                                <h4 className="text-xs font-black text-slate-800 uppercase">{site}</h4>
+                              </div>
+                              <AutoResizeTextarea 
+                                value={weeklyUpdates[site]} 
+                                onChange={(e) => setWeeklyUpdates({...weeklyUpdates, [site]: e.target.value})} 
+                                placeholder={`Catatan ${site}...`} 
+                                className="w-full bg-transparent border-none text-sm font-semibold text-slate-700 resize-none outline-none p-0 h-auto overflow-hidden" 
+                                readOnly={isExportMode} 
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* DAILY DASHBOARD VIEW LAYOUT */
+                  <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-in fade-in duration-700">
+                    <div className="xl:col-span-3 space-y-8">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <StatCard title="Total Good Issue" value={formatCurrency(dashboardStats!.totalGoodIssue)} icon={<ArrowUpRight size={24} className="text-emerald-500" />} />
+                        <StatCard title="Total Good Receive" value={formatCurrency(dashboardStats!.totalGoodReceive)} icon={<ArrowDownLeft size={24} className="text-rose-500" />} />
+                        <StatCard title="Total Stock Value" value={formatCurrency(dashboardStats!.totalStockValue)} icon={<Package size={24} className="text-slate-600" />} trend={dashboardStats!.trends.stock} trendClassName={dashboardStats!.trends.stockIsPositive ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'} />
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <ChartCard title="Good Issue & Receive" icon={<ArrowLeftRight size={18} />}>
+                          <div className="flex flex-col">
+                            <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                              <span className="w-[40%]">Location</span><span className="w-[30%] text-center">Issue</span><span className="w-[30%] text-center">Receive</span>
+                            </div>
+                            {sites.filter(curr => curr.name !== 'ZONA 9').map((data) => (
+                              <div key={data.name} className="flex items-center px-2 py-3 border-b border-slate-50 last:border-0">
+                                <div className="w-[40%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-xs font-bold text-slate-800 truncate">{data.name}</span></div>
+                                <div className="w-[30%] text-center font-bold text-emerald-700 text-xs tabular-nums">{data.issued > 0 ? formatCurrency(data.issued) : '-'}</div>
+                                <div className="w-[30%] text-center font-bold text-rose-700 text-xs tabular-nums">{data.received > 0 ? formatCurrency(data.received) : '-'}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </ChartCard>
+                        <ChartCard title="Stock Value" icon={<TrendingUp size={18} />}>
+                          <div className="w-full h-[180px] relative">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie data={sites.filter(s => s.stock > 0 && s.name !== 'ZONA 9')} innerRadius={45} outerRadius={60} paddingAngle={4} dataKey="stock" nameKey="name" isAnimationActive={false} labelLine={false} label={renderStockPercentLabel}>
+                                  {sites.filter(s => s.stock > 0 && s.name !== 'ZONA 9').map((entry, index) => <Cell key={index} fill={entry.color} stroke="none" />)}
+                                </Pie>
+                                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="w-full space-y-2 pt-2">
+                            {sites.filter(s => s.stock > 0 && s.name !== 'ZONA 9').map((site, index) => (
+                              <div key={index} className="flex items-center justify-between border-b border-slate-50 pb-2 last:border-0">
+                                <div className="flex items-center gap-2"><div className="w-1.5 h-3 rounded-full" style={{ backgroundColor: site.color }}></div><span className="text-[10px] font-bold text-slate-600 uppercase">{site.name}</span></div>
+                                <span className="text-xs font-bold text-slate-900 tabular-nums">{formatCurrency(site.stock)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </ChartCard>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                         <ChartCard title="Person on Board" icon={<Users size={18} />} className="md:col-span-1">
                           <div className="flex flex-col space-y-2.5">
                             {sites.map((site) => (
@@ -832,120 +1013,100 @@ const App: React.FC = () => {
                             </div>
                           </div>
                         </ChartCard>
-                      )}
 
-                      <ChartCard title={activeView === 'weekly' ? "Weekly Rig Move" : "Support Rig Move"} icon={<Truck size={18} />} className="md:col-span-1">
-                        <div className="flex flex-col space-y-3">
-                          {(activeView === 'weekly' ? weeklyRigs : rigMoves).length > 0 ? (
-                            (activeView === 'weekly' ? weeklyRigs : rigMoves).slice(0, 5).map((rm, idx) => (
-                              <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0">
-                                <div className="flex items-center gap-2 mb-1"><div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: (activeView === 'weekly' ? weeklyLastDaySites : sites).find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div><span className="text-[10px] font-bold text-slate-700 uppercase truncate">{rm.site} - {rm.rig_name}</span></div>
-                                <div className="flex items-center gap-2 text-[9px] text-slate-600 font-semibold ml-3.5"><span className="truncate">{rm.from_loc}</span><MoveRight size={10} className="text-indigo-600 shrink-0" /><span className="truncate">{rm.to_loc}</span></div>
-                              </div>
-                            ))
-                          ) : <div className="text-center py-10 opacity-20"><Truck size={32} className="mx-auto" /></div>}
-                        </div>
-                        <div className="flex flex-col items-center pt-4 border-t border-slate-100 mt-4">
-                          <h3 className="text-[10px] font-bold text-slate-600 uppercase mb-1">{activeView === 'weekly' ? 'WEEKLY' : 'DAILY'} MOVE</h3>
-                          <div className="relative w-28 h-28">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart>
-                                <Pie data={(activeView === 'weekly' ? weeklyStats!.rigMovesBySite : dashboardStats!.rigMovesBySite).length > 0 ? (activeView === 'weekly' ? weeklyStats!.rigMovesBySite : dashboardStats!.rigMovesBySite) : [{ value: 1, color: '#f1f5f9' }]} innerRadius={28} outerRadius={38} dataKey="value" isAnimationActive={false} stroke="none">
-                                  {(activeView === 'weekly' ? weeklyStats!.rigMovesBySite : dashboardStats!.rigMovesBySite).length > 0 ? (activeView === 'weekly' ? weeklyStats!.rigMovesBySite : dashboardStats!.rigMovesBySite).map((entry: any, index: number) => <Cell key={index} fill={entry.color} />) : <Cell fill="#f1f5f9" />}
-                                </Pie>
-                              </PieChart>
-                            </ResponsiveContainer>
-                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span className="text-lg font-black text-slate-900 leading-none">{activeView === 'weekly' ? weeklyStats!.totalRigMoves : dashboardStats!.totalRigMoves}</span></div>
+                        <ChartCard title="Support Rig Move" icon={<Truck size={18} />} className="md:col-span-1">
+                          <div className="flex flex-col space-y-3">
+                            {rigMoves.length > 0 ? (
+                              rigMoves.slice(0, 5).map((rm, idx) => (
+                                <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0">
+                                  <div className="flex items-center gap-2 mb-1"><div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: sites.find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div><span className="text-[10px] font-bold text-slate-700 uppercase truncate">{rm.site} - {rm.rig_name}</span></div>
+                                  <div className="flex items-center gap-2 text-[9px] text-slate-600 font-semibold ml-3.5"><span className="truncate">{rm.from_loc}</span><MoveRight size={10} className="text-indigo-600 shrink-0" /><span className="truncate">{rm.to_loc}</span></div>
+                                </div>
+                              ))
+                            ) : <div className="text-center py-10 opacity-20"><Truck size={32} className="mx-auto" /></div>}
                           </div>
-                        </div>
-                      </ChartCard>
-
-                      <ChartCard title={activeView === 'weekly' ? "Weekly Fuel Consumption" : "Fuel Consumption"} icon={<Fuel size={18} />} className="md:col-span-2">
-                        <div className="grid grid-cols-2 gap-x-8 gap-y-3 w-full pb-4">
-                          {(activeView === 'weekly' ? Object.entries(weeklyStats!.fuelAgg).map(([name, data]: any) => ({ name, ...data })) : fuelData).map((data: any) => (
-                            <div key={data.name} className="flex flex-col">
-                              <div className="flex items-center gap-2 mb-1"><div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: (activeView === 'weekly' ? weeklyLastDaySites : sites).find(s => s.name === data.name)?.color }}></div><span className="text-[10px] font-bold text-slate-600 uppercase truncate">{data.name}</span></div>
-                              <div className="flex gap-4 ml-3.5 tabular-nums text-[11px] font-bold text-slate-900 leading-none">
-                                <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">BIO</span><span>{formatNumber(data.biosolar)}</span></div>
-                                <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">PERT</span><span>{formatNumber(data.pertalite)}</span></div>
-                                <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">DEX</span><span>{formatNumber(data.pertadex)}</span></div>
-                              </div>
+                          <div className="flex flex-col items-center pt-4 border-t border-slate-100 mt-4">
+                            <h3 className="text-[10px] font-bold text-slate-600 uppercase mb-1">DAILY MOVE</h3>
+                            <div className="relative w-28 h-28">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Pie data={dashboardStats!.rigMovesBySite.length > 0 ? dashboardStats!.rigMovesBySite : [{ value: 1, color: '#f1f5f9' }]} innerRadius={28} outerRadius={38} dataKey="value" isAnimationActive={false} stroke="none">
+                                    {dashboardStats!.rigMovesBySite.length > 0 ? dashboardStats!.rigMovesBySite.map((entry: any, index: number) => <Cell key={index} fill={entry.color} />) : <Cell fill="#f1f5f9" />}
+                                  </Pie>
+                                </PieChart>
+                              </ResponsiveContainer>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none"><span className="text-lg font-black text-slate-900 leading-none">{dashboardStats!.totalRigMoves}</span></div>
                             </div>
-                          ))}
-                        </div>
-                        <div className="flex items-center justify-center gap-4 bg-slate-50 py-2 rounded-xl mt-auto">
-                          <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">TOTAL CONSUMPTION</span>
-                          <div className="flex items-baseline gap-1.5"><span className="text-xl font-black text-indigo-600">{formatNumber(activeView === 'weekly' ? weeklyStats!.grandTotalFuel : dashboardStats!.grandTotalFuel)}</span><span className="text-[9px] text-slate-600 font-bold uppercase">LTR</span></div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-1 pt-6 border-t border-slate-100 mt-6">
-                           <div className="flex flex-col items-center">
-                             <div className="w-24 h-24 relative">
-                               <ResponsiveContainer width="100%" height="100%">
-                                 <PieChart>
-                                   <Pie data={activeView === 'weekly' ? weeklyStats!.biosolarSegments : dashboardStats!.biosolarSegments} innerRadius={20} outerRadius={35} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
-                                     {(activeView === 'weekly' ? weeklyStats!.biosolarSegments : dashboardStats!.biosolarSegments).map((entry: any, idx: number) => <Cell key={idx} fill={entry.color} />)}
-                                   </Pie>
-                                 </PieChart>
-                               </ResponsiveContainer>
+                          </div>
+                        </ChartCard>
+
+                        <ChartCard title="Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-2">
+                          <div className="grid grid-cols-2 gap-x-8 gap-y-3 w-full pb-4">
+                            {fuelData.map((data: any) => (
+                              <div key={data.name} className="flex flex-col">
+                                <div className="flex items-center gap-2 mb-1"><div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: sites.find(s => s.name === data.name)?.color }}></div><span className="text-[10px] font-bold text-slate-600 uppercase truncate">{data.name}</span></div>
+                                <div className="flex gap-4 ml-3.5 tabular-nums text-[11px] font-bold text-slate-900 leading-none">
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">BIO</span><span>{formatNumber(data.biosolar)}</span></div>
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">PERTALITE</span><span>{formatNumber(data.pertalite)}</span></div>
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">DEX</span><span>{formatNumber(data.pertadex)}</span></div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex items-center justify-center gap-4 bg-slate-50 py-2 rounded-xl mt-auto">
+                            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">TOTAL CONSUMPTION</span>
+                            <div className="flex items-baseline gap-1.5"><span className="text-xl font-black text-indigo-600">{formatNumber(dashboardStats!.grandTotalFuel)}</span><span className="text-[9px] text-slate-600 font-bold uppercase">LTR</span></div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1 pt-6 border-t border-slate-100 mt-6">
+                             <div className="flex flex-col items-center">
+                               <div className="w-24 h-24 relative">
+                                 <ResponsiveContainer width="100%" height="100%">
+                                   <PieChart>
+                                     <Pie data={dashboardStats!.biosolarSegments} innerRadius={20} outerRadius={35} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                       {dashboardStats!.biosolarSegments.map((entry: any, idx: number) => <Cell key={idx} fill={entry.color} />)}
+                                     </Pie>
+                                   </PieChart>
+                                 </ResponsiveContainer>
+                               </div>
+                               <span className="text-[11px] font-black text-slate-900 leading-none mt-1">{formatNumber(dashboardStats!.totalBiosolar)} L</span>
+                               <span className="text-[8px] font-bold text-slate-500 uppercase mt-1 text-center leading-tight">BIOSOLAR</span>
                              </div>
-                             <span className="text-[11px] font-black text-slate-900 leading-none mt-1">{formatNumber(activeView === 'weekly' ? weeklyStats!.totalBiosolar : dashboardStats!.totalBiosolar)} L</span>
-                             <span className="text-[8px] font-bold text-slate-500 uppercase mt-1 text-center leading-tight">BIOSOLAR</span>
-                           </div>
-                           <div className="flex flex-col items-center">
-                             <div className="w-24 h-24 relative">
-                               <ResponsiveContainer width="100%" height="100%">
-                                 <PieChart>
-                                   <Pie data={activeView === 'weekly' ? weeklyStats!.pertaliteSegments : dashboardStats!.pertaliteSegments} innerRadius={20} outerRadius={35} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
-                                     {(activeView === 'weekly' ? weeklyStats!.pertaliteSegments : dashboardStats!.pertaliteSegments).map((entry: any, idx: number) => <Cell key={idx} fill={entry.color} />)}
-                                   </Pie>
-                                 </PieChart>
-                               </ResponsiveContainer>
+                             <div className="flex flex-col items-center">
+                               <div className="w-24 h-24 relative">
+                                 <ResponsiveContainer width="100%" height="100%">
+                                   <PieChart>
+                                     <Pie data={dashboardStats!.pertaliteSegments} innerRadius={20} outerRadius={35} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                       {dashboardStats!.pertaliteSegments.map((entry: any, idx: number) => <Cell key={idx} fill={entry.color} />)}
+                                     </Pie>
+                                   </PieChart>
+                                 </ResponsiveContainer>
+                               </div>
+                               <span className="text-[11px] font-black text-slate-900 leading-none mt-1">{formatNumber(dashboardStats!.totalPertalite)} L</span>
+                               <span className="text-[8px] font-bold text-slate-500 uppercase mt-1 text-center leading-tight">PERTALITE</span>
                              </div>
-                             <span className="text-[11px] font-black text-slate-900 leading-none mt-1">{formatNumber(activeView === 'weekly' ? weeklyStats!.totalPertalite : dashboardStats!.totalPertalite)} L</span>
-                             <span className="text-[8px] font-bold text-slate-500 uppercase mt-1 text-center leading-tight">PERTALITE</span>
-                           </div>
-                           <div className="flex flex-col items-center">
-                             <div className="w-24 h-24 relative">
-                               <ResponsiveContainer width="100%" height="100%">
-                                 <PieChart>
-                                   <Pie data={activeView === 'weekly' ? weeklyStats!.pertadexSegments : dashboardStats!.pertadexSegments} innerRadius={20} outerRadius={35} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
-                                     {(activeView === 'weekly' ? weeklyStats!.pertadexSegments : dashboardStats!.pertadexSegments).map((entry: any, idx: number) => <Cell key={idx} fill={entry.color} />)}
-                                   </Pie>
-                                 </PieChart>
-                               </ResponsiveContainer>
+                             <div className="flex flex-col items-center">
+                               <div className="w-24 h-24 relative">
+                                 <ResponsiveContainer width="100%" height="100%">
+                                   <PieChart>
+                                     <Pie data={dashboardStats!.pertadexSegments} innerRadius={20} outerRadius={35} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                       {dashboardStats!.pertadexSegments.map((entry: any, idx: number) => <Cell key={idx} fill={entry.color} />)}
+                                     </Pie>
+                                   </PieChart>
+                                 </ResponsiveContainer>
+                               </div>
+                               <span className="text-[11px] font-black text-slate-900 leading-none mt-1">{formatNumber(dashboardStats!.totalPertadex)} L</span>
+                               <span className="text-[8px] font-bold text-slate-500 uppercase mt-1 text-center leading-tight">PERTADEX</span>
                              </div>
-                             <span className="text-[11px] font-black text-slate-900 leading-none mt-1">{formatNumber(activeView === 'weekly' ? weeklyStats!.totalPertadex : dashboardStats!.totalPertadex)} L</span>
-                             <span className="text-[8px] font-bold text-slate-500 uppercase mt-1 text-center leading-tight">PERTADEX</span>
-                           </div>
-                        </div>
-                      </ChartCard>
+                          </div>
+                        </ChartCard>
+                      </div>
                     </div>
 
-                    {activeView === 'weekly' && (
-                      <div className="mt-8">
-                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 h-auto overflow-visible print-expanded">
-                          <div className="flex items-center gap-2 border-b border-slate-100 pb-2 mb-3">
-                            <div className="w-1.5 h-4 rounded-full bg-rose-500"></div>
-                            <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight">Weekly Update Zona 9</h4>
-                          </div>
-                          <AutoResizeTextarea 
-                            value={weeklyUpdates['ZONA 9'] || ''} 
-                            onChange={(e) => setWeeklyUpdates({...weeklyUpdates, ['ZONA 9']: e.target.value})} 
-                            placeholder="Catatan mingguan..." 
-                            className="w-full bg-slate-50/50 p-4 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 resize-none outline-none leading-relaxed h-auto" 
-                            readOnly={isExportMode} 
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="xl:col-span-2">
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 h-full p-8 flex flex-col overflow-visible">
-                      <SectionHeader title={activeView === 'weekly' ? "Weekly Update" : "Daily Activity Log"} icon={activeView === 'weekly' ? <Edit3 size={18} /> : <ActivityIcon size={18} />} />
-                      <div className="flex-1 space-y-6 mt-4 overflow-visible">
-                        {activeView === 'dashboard' ? (
-                          sortedActivities.map((act, i) => (
+                    <div className="xl:col-span-2">
+                      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 h-full p-8 flex flex-col overflow-visible">
+                        <SectionHeader title="Daily Activity Log" icon={<ActivityIcon size={18} />} />
+                        <div className="flex-1 space-y-6 mt-4 overflow-visible">
+                          {sortedActivities.map((act, i) => (
                             <div key={i} className="space-y-3">
                               <div className="flex items-center gap-2 border-b border-slate-50 py-1.5 sticky top-0 bg-white z-10">
                                 <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: sites.find(s => s.name === act.site)?.color }}></div>
@@ -953,20 +1114,15 @@ const App: React.FC = () => {
                               </div>
                               <div className="space-y-3 px-1">{act.items.map((item, j) => (<div key={j} className="relative pl-5 py-1"><div className="absolute left-0 top-[12px] w-1.5 h-1.5 rounded-full bg-slate-300"></div><div className="flex flex-col"><span className="text-[10px] font-bold text-indigo-700 uppercase leading-none mb-1">{item.category}</span><p className="text-sm text-slate-700 leading-relaxed font-medium">{item.description}</p></div></div>))}</div>
                             </div>
-                          ))
-                        ) : (
-                          Object.keys(weeklyUpdates).filter(site => site !== 'ZONA 9').map((site) => (
-                            <div key={site} className="space-y-3 p-4 bg-slate-50/50 rounded-xl border border-slate-100">
-                              <div className="flex items-center gap-2 border-b border-slate-100 pb-2"><div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === site)?.color }}></div><h4 className="text-xs font-black text-slate-800 uppercase">{site}</h4></div>
-                              <AutoResizeTextarea value={weeklyUpdates[site]} onChange={(e) => setWeeklyUpdates({...weeklyUpdates, [site]: e.target.value})} placeholder={`Catatan ${site}...`} className="w-full bg-transparent border-none text-sm font-semibold text-slate-700 resize-none outline-none p-0 h-auto" readOnly={isExportMode} />
-                            </div>
-                          ))
-                        )}
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ) : <div className="text-center py-20 flex flex-col items-center"><Database size={48} className="text-slate-200 mb-4" /><h2 className="text-xl font-bold">Data Tidak Ditemukan</h2></div>
+                )
+              ) : (
+                <div className="text-center py-20 flex flex-col items-center"><Database size={48} className="text-slate-200 mb-4" /><h2 className="text-xl font-bold">Data Tidak Ditemukan</h2></div>
+              )
             ) : null
           )}
         </div>
