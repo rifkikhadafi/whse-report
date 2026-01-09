@@ -33,6 +33,8 @@ import { supabase } from './supabase';
 import { SiteData, FuelData, Activity, RigMove } from './types';
 import { sites as initialSites, fuelData as initialFuelData } from './mockData';
 
+const LOGO_URL = "https://foyuidolkgrkbsooyswu.supabase.co/storage/v1/object/public/branding/logo.png";
+
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
@@ -44,6 +46,19 @@ const formatCurrency = (value: number) => {
 const formatNumber = (value: number) => {
   return new Intl.NumberFormat('id-ID').format(value);
 };
+
+// --- Branding Component (Menggunakan Image Asli) ---
+const LogoZ9 = ({ className = "w-12 h-12" }: { className?: string }) => (
+  <img 
+    src={LOGO_URL} 
+    alt="Zona 9 Logo" 
+    className={`${className} object-contain`}
+    onError={(e) => {
+      // Fallback sederhana jika gambar gagal dimuat
+      e.currentTarget.style.display = 'none';
+    }}
+  />
+);
 
 // --- Shared Components ---
 
@@ -430,7 +445,6 @@ const App: React.FC = () => {
   const handleBulkSave = async () => {
     setIsSaving(true);
     try {
-      // 1. Simpan Site Data
       const siteUpdates = localSites.map(s => {
         const { id, created_at, ...cleanSite } = s as any;
         return { ...cleanSite, date: selectedDate };
@@ -438,7 +452,6 @@ const App: React.FC = () => {
       const sResult = await supabase.from('sites').upsert(siteUpdates, { onConflict: 'name,date' });
       if (sResult.error) throw new Error(`Sites: ${sResult.error.message}`);
 
-      // 2. Simpan Fuel Data
       const fuelUpdates = localFuel.map(f => {
         const { id, created_at, ...cleanFuel } = f as any;
         return { ...cleanFuel, date: selectedDate };
@@ -446,7 +459,6 @@ const App: React.FC = () => {
       const fResult = await supabase.from('fuel_data').upsert(fuelUpdates, { onConflict: 'name,date' });
       if (fResult.error) throw new Error(`Fuel: ${fResult.error.message}`);
 
-      // 3. Simpan Rig Moves
       const rDel = await supabase.from('rig_moves').delete().eq('date', selectedDate);
       if (rDel.error) throw new Error(`Rig Delete: ${rDel.error.message}`);
 
@@ -643,8 +655,8 @@ const App: React.FC = () => {
       {!isExportMode && (
         <aside className="hidden lg:flex flex-col w-24 bg-slate-900 text-slate-400 h-screen sticky top-0 no-print z-50">
           <div className="py-8 flex flex-col items-center">
-            <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mb-10 shadow-lg shadow-black/20 overflow-hidden p-2">
-              <img src="./logo.png" alt="Z9 Logo" className="w-full h-full object-contain" />
+            <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mb-10 shadow-lg shadow-black/20 overflow-hidden p-1.5 transition-transform hover:scale-105 active:scale-95">
+              <LogoZ9 className="w-full h-full" />
             </div>
             <nav className="flex-1 w-full flex flex-col items-center space-y-4 px-2">
               <button onClick={() => setActiveView('dashboard')} className={`group w-full aspect-square flex flex-col items-center justify-center gap-1.5 rounded-2xl transition-all ${activeView === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'hover:bg-slate-800 hover:text-white'}`}>
@@ -668,7 +680,11 @@ const App: React.FC = () => {
         <div className={`p-4 lg:p-10 min-h-full mx-auto ${isExportMode ? 'export-container' : 'max-w-[1600px]'}`} ref={dashboardRef}>
           <header className={`flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 relative z-10 ${isExportMode ? 'pb-6 border-b border-slate-100' : ''}`}>
             <div className="flex items-center gap-5">
-              {!isExportMode && <img src="./logo.png" alt="Z9 Logo" className="w-14 h-14 object-contain" />}
+              {!isExportMode && (
+                <div className="w-16 h-16 bg-white rounded-2xl p-2 shadow-sm border border-slate-100 flex items-center justify-center">
+                  <LogoZ9 className="w-full h-full" />
+                </div>
+              )}
               <div>
                 <h1 className="text-3xl font-black text-slate-900 tracking-tight">
                   Warehouse Operation Zona 9 {activeView === 'weekly' ? 'Weekly' : (activeView === 'input' ? 'Data Entry' : 'Daily')} Dashboard
