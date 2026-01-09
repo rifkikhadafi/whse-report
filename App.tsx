@@ -615,7 +615,7 @@ const App: React.FC = () => {
                   
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                     <ChartCard title="Person on Board" icon={<Users size={18} />} className="md:col-span-1">
-                      <div className="flex flex-col space-y-2 pr-1 h-[160px] overflow-hidden">
+                      <div className="flex flex-col space-y-2.5 pr-1 h-[210px] overflow-hidden">
                         {sites.map((site) => (
                           <div key={site.name} className="flex flex-col">
                             <div className="flex items-center gap-2 mb-0.5">
@@ -644,9 +644,9 @@ const App: React.FC = () => {
                     </ChartCard>
 
                     <ChartCard title="Support Rig Move" icon={<Truck size={18} />} className="md:col-span-1">
-                      <div className="flex flex-col space-y-3 pr-1 h-[160px] overflow-hidden">
+                      <div className="flex flex-col space-y-3 pr-1 h-[210px] overflow-hidden">
                         {rigMoves.length > 0 ? (
-                          rigMoves.slice(0, 4).map((rm, idx) => (
+                          rigMoves.slice(0, 5).map((rm, idx) => (
                             <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0 mb-0.5">
                               <div className="flex items-center gap-2 mb-1">
                                 <div className="w-1.5 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: sites.find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div>
@@ -700,7 +700,7 @@ const App: React.FC = () => {
 
                     <ChartCard title="Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-2">
                       <div className="flex flex-col h-full">
-                        <div className="flex flex-col justify-between h-[160px] overflow-hidden pr-1">
+                        <div className="flex flex-col justify-between h-[210px] overflow-hidden pr-1 pb-2">
                           <div className="grid grid-cols-2 gap-x-8 gap-y-3 px-1 w-full">
                             {fuelData.map((data) => (
                               <div key={data.name} className="flex flex-col">
@@ -725,7 +725,7 @@ const App: React.FC = () => {
                               </div>
                             ))}
                           </div>
-                          <div className="flex items-center justify-center gap-4 bg-slate-50 py-2 rounded-xl mt-2">
+                          <div className="flex items-center justify-center gap-4 bg-slate-50 py-2 rounded-xl mt-4">
                             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">TOTAL</span>
                             <div className="flex items-baseline gap-1.5">
                               <span className="text-xl font-black text-indigo-600 tabular-nums leading-none">{formatNumber(dashboardStats.grandTotalFuel)}</span>
