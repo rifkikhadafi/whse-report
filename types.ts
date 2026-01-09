@@ -19,6 +19,8 @@ export interface RigMove {
   rig_name: string;
   from_loc: string;
   to_loc: string;
+  move_date?: string;
+  date?: string; // Record date
 }
 
 export interface Activity {

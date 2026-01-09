@@ -456,7 +456,7 @@ const App: React.FC = () => {
   };
 
   const addLocalRigMove = () => {
-    setLocalRigMoves(prev => [...prev, { site: 'PHSS', rig_name: '', from_loc: '', to_loc: '' }]);
+    setLocalRigMoves(prev => [...prev, { site: 'PHSS', rig_name: '', from_loc: '', to_loc: '', move_date: selectedDate }]);
   };
   const updateLocalRigMove = (index: number, field: keyof RigMove, value: string) => {
     setLocalRigMoves(prev => prev.map((rm, i) => i === index ? { ...rm, [field]: value } : rm));
@@ -509,8 +509,15 @@ const App: React.FC = () => {
       return `${diff >= 0 ? '+' : ''}${diff.toFixed(2)}%`;
     };
 
+    const sortedRigMoves = [...rigMoves].sort((a, b) => {
+        const dateA = a.move_date || a.date || '';
+        const dateB = b.move_date || b.date || '';
+        return dateA.localeCompare(dateB);
+    });
+
     return {
       ...current,
+      sortedRigMoves,
       trends: {
         stock: calcTrend(current.totalStockValue, prevStock),
         stockIsPositive: current.totalStockValue >= prevStock,
@@ -569,11 +576,17 @@ const App: React.FC = () => {
     const pertaliteSegments = Object.entries(fuelAgg).map(([name, data]) => ({ name, value: data.pertalite, color: weeklyLastDaySites.find(s => s.name === name)?.color || '#94a3b8' })).filter(d => d.value > 0);
     const pertadexSegments = Object.entries(fuelAgg).map(([name, data]) => ({ name, value: data.pertadex, color: weeklyLastDaySites.find(s => s.name === name)?.color || '#94a3b8' })).filter(d => d.value > 0);
 
+    const sortedRigMoves = [...weeklyRigs].sort((a, b) => {
+        const dateA = a.move_date || a.date || '';
+        const dateB = b.move_date || b.date || '';
+        return dateA.localeCompare(dateB);
+    });
+
     return { 
       totalIssue, totalReceive, lastDayStock, firstDayStock, stockTrendValue, stockIsPositive, fuelAgg, siteAgg, 
       totalRigMoves: weeklyRigs.length, rigMovesBySite: Object.values(rigMovesBySite),
       grandTotalFuel, totalBiosolar, totalPertalite, totalPertadex,
-      biosolarSegments, pertaliteSegments, pertadexSegments
+      biosolarSegments, pertaliteSegments, pertadexSegments, sortedRigMoves
     };
   }, [weeklySites, weeklyFuel, weeklyRigs, weeklyFirstDaySites, weeklyLastDaySites]);
 
@@ -684,7 +697,7 @@ const App: React.FC = () => {
           </header>
 
           {activeView === 'input' ? (
-            <div className="animate-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto">
+            <div className="animate-in slide-in-from-bottom-4 duration-500 max-w-6xl mx-auto">
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
                 <div className="flex border-b border-slate-100 bg-slate-50/50">
                   <button onClick={() => setActiveInputTab('sites')} className={`flex-1 py-4 px-6 text-xs font-black uppercase tracking-widest transition-all ${activeInputTab === 'sites' ? 'bg-white text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:bg-slate-100'}`}>Stock & POB</button>
@@ -740,13 +753,14 @@ const App: React.FC = () => {
                       </div>
                       <div className="space-y-4">
                         {localRigMoves.map((rm, idx) => (
-                          <div key={idx} className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100 items-end">
+                          <div key={idx} className="grid grid-cols-1 md:grid-cols-6 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 items-end">
                             <div className="space-y-1.5">
                               <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Site</label>
                               <select value={rm.site} onChange={(e) => updateLocalRigMove(idx, 'site', e.target.value)} className="w-full h-11 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none">
                                 {localSites.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
                               </select>
                             </div>
+                            <div className="space-y-1.5"><label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Date</label><input type="date" value={rm.move_date || selectedDate} onChange={(e) => updateLocalRigMove(idx, 'move_date', e.target.value)} className="w-full h-11 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none" /></div>
                             <div className="space-y-1.5"><label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Rig</label><input value={rm.rig_name} onChange={(e) => updateLocalRigMove(idx, 'rig_name', e.target.value)} className="w-full h-11 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none" /></div>
                             <div className="space-y-1.5"><label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">From</label><input value={rm.from_loc} onChange={(e) => updateLocalRigMove(idx, 'from_loc', e.target.value)} className="w-full h-11 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none" /></div>
                             <div className="space-y-1.5"><label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">To</label><input value={rm.to_loc} onChange={(e) => updateLocalRigMove(idx, 'to_loc', e.target.value)} className="w-full h-11 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none" /></div>
@@ -821,10 +835,18 @@ const App: React.FC = () => {
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
                         <ChartCard title="Weekly Rig Move" icon={<Truck size={18} />} className="md:col-span-2">
                           <div className="flex flex-col space-y-3">
-                            {weeklyRigs.length > 0 ? (
-                              weeklyRigs.slice(0, 10).map((rm, idx) => (
+                            {weeklyStats!.sortedRigMoves.length > 0 ? (
+                              weeklyStats!.sortedRigMoves.slice(0, 10).map((rm, idx) => (
                                 <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0">
-                                  <div className="flex items-center gap-2 mb-1"><div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div><span className="text-[10px] font-bold text-slate-700 uppercase truncate">{rm.site} - {rm.rig_name}</span></div>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div>
+                                      <span className="text-[10px] font-bold text-slate-700 uppercase truncate">{rm.site} - {rm.rig_name}</span>
+                                    </div>
+                                    <span className="text-[9px] font-black text-indigo-600 uppercase bg-indigo-50 px-1.5 py-0.5 rounded">
+                                      {new Date(rm.move_date || rm.date || '').toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})}
+                                    </span>
+                                  </div>
                                   <div className="flex items-center gap-2 text-[9px] text-slate-600 font-semibold ml-3.5"><span className="truncate">{rm.from_loc}</span><MoveRight size={10} className="text-indigo-600 shrink-0" /><span className="truncate">{rm.to_loc}</span></div>
                                 </div>
                               ))
@@ -1019,10 +1041,18 @@ const App: React.FC = () => {
 
                         <ChartCard title="Support Rig Move" icon={<Truck size={18} />} className="md:col-span-1">
                           <div className="flex flex-col space-y-3">
-                            {rigMoves.length > 0 ? (
-                              rigMoves.slice(0, 5).map((rm, idx) => (
+                            {dashboardStats!.sortedRigMoves.length > 0 ? (
+                              dashboardStats!.sortedRigMoves.slice(0, 5).map((rm, idx) => (
                                 <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0">
-                                  <div className="flex items-center gap-2 mb-1"><div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: sites.find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div><span className="text-[10px] font-bold text-slate-700 uppercase truncate">{rm.site} - {rm.rig_name}</span></div>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: sites.find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div>
+                                      <span className="text-[10px] font-bold text-slate-700 uppercase truncate">{rm.site} - {rm.rig_name}</span>
+                                    </div>
+                                    <span className="text-[8px] font-bold text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded">
+                                      {new Date(rm.move_date || rm.date || '').toLocaleDateString('id-ID', {day: 'numeric', month: 'short'})}
+                                    </span>
+                                  </div>
                                   <div className="flex items-center gap-2 text-[9px] text-slate-600 font-semibold ml-3.5"><span className="truncate">{rm.from_loc}</span><MoveRight size={10} className="text-indigo-600 shrink-0" /><span className="truncate">{rm.to_loc}</span></div>
                                 </div>
                               ))
