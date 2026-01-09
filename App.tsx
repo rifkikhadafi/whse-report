@@ -27,9 +27,9 @@ import {
   CalendarRange,
   Edit3,
   Image as ImageIcon,
-  Server
+  Server,
+  Download
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
 import { supabase } from './supabase';
 import { SiteData, FuelData, Activity, RigMove } from './types';
 import { sites as initialSites, fuelData as initialFuelData } from './mockData';
@@ -93,7 +93,8 @@ const AutoResizeTextarea = ({ value, onChange, placeholder, className, readOnly 
   const adjustHeight = () => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      // Buffer to prevent tiny scroll jitter
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight + 4}px`;
     }
   };
 
@@ -102,7 +103,8 @@ const AutoResizeTextarea = ({ value, onChange, placeholder, className, readOnly 
   }, [value]);
 
   useEffect(() => {
-    const timer = setTimeout(adjustHeight, 250); // Delay for layout settled
+    // Initial adjust with a small delay for layout stabilization
+    const timer = setTimeout(adjustHeight, 200);
     return () => clearTimeout(timer);
   }, []);
 
@@ -119,7 +121,6 @@ const AutoResizeTextarea = ({ value, onChange, placeholder, className, readOnly 
   );
 };
 
-// Specialized label only for Stock Charts (outside and color-matched)
 const renderStockPercentLabel = ({ cx, cy, midAngle, outerRadius, percent, fill }: any) => {
   const RADIAN = Math.PI / 180;
   const radius = outerRadius + 15;
@@ -386,6 +387,24 @@ const App: React.FC = () => {
     }
   };
 
+  const handleServerDownload = async () => {
+    setIsDownloading(true);
+    setProgress('Server sedang merender laporan HD...');
+    try {
+      const host = window.location.origin;
+      const queryParams = new URLSearchParams({ date: selectedDate, view: activeView, startDate: startDate, endDate: endDate, host });
+      const response = await fetch(`/api/screenshot?${queryParams.toString()}`);
+      if (!response.ok) throw new Error('Gagal render server');
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `Zona9_Report_${selectedDate}.png`;
+      link.click();
+      showToast('Laporan HD Berhasil Diunduh!');
+    } catch (e: any) { showToast(e.message, true); } finally { setIsDownloading(false); setProgress(''); }
+  };
+
   const updateLocalSite = (name: string, field: keyof SiteData, value: any) => {
     setLocalSites(prev => prev.map(s => s.name === name ? { ...s, [field]: value } : s));
   };
@@ -514,40 +533,6 @@ const App: React.FC = () => {
     };
   }, [weeklySites, weeklyFuel, weeklyRigs, weeklyFirstDaySites, weeklyLastDaySites]);
 
-  const handleClientDownload = async () => {
-    if (!dashboardRef.current) return;
-    setIsDownloading(true);
-    try {
-      await document.fonts.ready;
-      const element = dashboardRef.current;
-      const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#f8fafc', windowWidth: 1440 });
-      const imgData = canvas.toDataURL('image/png', 1.0);
-      const link = document.createElement('a');
-      link.download = `Zona9_Laporan_${selectedDate}.png`;
-      link.href = imgData;
-      link.click();
-      showToast('Gambar Berhasil Diunduh!');
-    } catch (e) { showToast('Gagal mengunduh', true); } finally { setIsDownloading(false); }
-  };
-
-  const handleServerDownload = async () => {
-    setIsDownloading(true);
-    setProgress('Server sedang merender HD...');
-    try {
-      const host = window.location.origin;
-      const queryParams = new URLSearchParams({ date: selectedDate, view: activeView, startDate: startDate, endDate: endDate, host });
-      const response = await fetch(`/api/screenshot?${queryParams.toString()}`);
-      if (!response.ok) throw new Error('Gagal render server');
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `Zona9_HD_${selectedDate}.png`;
-      link.click();
-      showToast('HD Berhasil Diunduh!');
-    } catch (e: any) { showToast(e.message, true); } finally { setIsDownloading(false); setProgress(''); }
-  };
-
   const formattedSelectedDate = new Date(selectedDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
   const sortedActivities = useMemo(() => {
     const order = ['ZONA 9', 'PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG'];
@@ -566,7 +551,7 @@ const App: React.FC = () => {
       {isDownloading && !isExportMode && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-md flex flex-col items-center justify-center text-white p-6">
           <Loader2 className="w-16 h-16 text-indigo-400 animate-spin mb-6" />
-          <h2 className="text-2xl font-black mb-2 tracking-tight">Mengekspor Laporan</h2>
+          <h2 className="text-2xl font-black mb-2 tracking-tight">Mengekspor Laporan HD</h2>
           <p className="text-slate-200 font-medium text-center">{progress}</p>
         </div>
       )}
@@ -630,14 +615,10 @@ const App: React.FC = () => {
             {!isExportMode && (
               <div className="flex items-center gap-3 no-print">
                 {activeView !== 'input' && (
-                  <div className="flex bg-slate-100 p-1 rounded-xl mr-2">
-                    <button onClick={handleClientDownload} title="Client-Side Image" className="p-2.5 text-slate-600 hover:text-indigo-600 transition-colors">
-                      <ImageIcon size={18} />
-                    </button>
-                    <button onClick={handleServerDownload} title="Server HD Image" className="p-2.5 text-slate-600 hover:text-indigo-600 transition-colors">
-                      <Server size={18} />
-                    </button>
-                  </div>
+                  <button onClick={handleServerDownload} className="flex items-center gap-2 px-6 h-11 bg-slate-900 text-white rounded-xl shadow-lg hover:bg-slate-800 transition-all font-bold text-xs uppercase tracking-wider">
+                    <Download size={16} />
+                    <span>Download HD Report</span>
+                  </button>
                 )}
                 {activeView === 'input' && (
                   <button onClick={handleBulkSave} disabled={isSaving} className="flex items-center justify-center gap-2 px-8 h-11 bg-indigo-600 text-white rounded-xl shadow-xl hover:bg-indigo-700 transition-all font-black text-sm uppercase tracking-widest">
@@ -657,6 +638,7 @@ const App: React.FC = () => {
 
           {activeView === 'input' ? (
             <div className="animate-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto">
+              {/* Input Section Omitted for Brevity - Same as Existing */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
                 <div className="flex border-b border-slate-100 bg-slate-50/50">
                   <button onClick={() => setActiveInputTab('sites')} className={`flex-1 py-4 px-6 text-xs font-black uppercase tracking-widest transition-all ${activeInputTab === 'sites' ? 'bg-white text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:bg-slate-100'}`}>Stock & POB</button>
@@ -773,7 +755,6 @@ const App: React.FC = () => {
                 activeView === 'weekly' ? (
                   /* WEEKLY DASHBOARD VIEW LAYOUT */
                   <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-in fade-in duration-700 overflow-visible items-stretch">
-                    {/* Left Column (3/5 width) */}
                     <div className="xl:col-span-3 space-y-8 overflow-visible flex flex-col">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <StatCard title="Weekly Good Issue" value={formatCurrency(weeklyStats!.totalIssue)} icon={<ArrowUpRight size={24} className="text-emerald-500" />} />
@@ -820,7 +801,7 @@ const App: React.FC = () => {
                         </ChartCard>
                       </div>
 
-                      {/* Wide Weekly Rig Move and Sized Weekly Fuel Consumption */}
+                      {/* Wide Weekly Rig Move and Corrected Weekly Fuel Consumption */}
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                         <ChartCard title="Weekly Rig Move" icon={<Truck size={18} />} className="md:col-span-2">
                           <div className="flex flex-col space-y-3">
@@ -909,16 +890,16 @@ const App: React.FC = () => {
                         </ChartCard>
                       </div>
 
-                      {/* Weekly Update Zona 9 - Align bottom with right column updates, ensured auto-resizing */}
-                      <div className="flex-1 flex flex-col pt-8 overflow-visible">
-                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-full flex flex-col overflow-visible">
+                      {/* Weekly Update Zona 9 - NO SCROLL, FULL TEXT VISIBLE */}
+                      <div className="flex-1 flex flex-col pt-8 overflow-visible min-h-fit">
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-auto flex flex-col overflow-visible">
                           <SectionHeader title="Weekly Update Zona 9" icon={<Edit3 size={18} />} />
-                          <div className="flex-1 mt-4 overflow-visible flex flex-col">
+                          <div className="flex-1 mt-4 overflow-visible h-auto">
                             <AutoResizeTextarea 
                               value={weeklyUpdates['ZONA 9'] || ''} 
                               onChange={(e) => setWeeklyUpdates({...weeklyUpdates, ['ZONA 9']: e.target.value})} 
                               placeholder="Catatan mingguan..." 
-                              className="w-full bg-slate-50/50 p-6 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 outline-none leading-relaxed overflow-hidden flex-1" 
+                              className="w-full bg-slate-50/50 p-6 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 outline-none leading-relaxed h-auto" 
                               readOnly={isExportMode} 
                             />
                           </div>
@@ -926,13 +907,12 @@ const App: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Right Column (2/5 width) - Weekly Update Sites (Position same as Daily Activity Log) */}
                     <div className="xl:col-span-2 flex flex-col overflow-visible">
-                      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-full flex flex-col overflow-visible">
+                      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-auto flex flex-col overflow-visible">
                         <SectionHeader title="Weekly Update Sites" icon={<Edit3 size={18} />} />
-                        <div className="flex-1 space-y-6 mt-4 overflow-visible flex flex-col">
+                        <div className="flex-1 space-y-6 mt-4 overflow-visible">
                           {Object.keys(weeklyUpdates).filter(site => site !== 'ZONA 9').map((site) => (
-                            <div key={site} className="space-y-3 p-4 bg-slate-50/50 rounded-xl border border-slate-100 overflow-visible">
+                            <div key={site} className="space-y-3 p-4 bg-slate-50/50 rounded-xl border border-slate-100 overflow-visible h-auto">
                               <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
                                 <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === site)?.color }}></div>
                                 <h4 className="text-xs font-black text-slate-800 uppercase">{site}</h4>
@@ -941,7 +921,7 @@ const App: React.FC = () => {
                                 value={weeklyUpdates[site]} 
                                 onChange={(e) => setWeeklyUpdates({...weeklyUpdates, [site]: e.target.value})} 
                                 placeholder={`Catatan ${site}...`} 
-                                className="w-full bg-transparent border-none text-sm font-semibold text-slate-700 resize-none outline-none p-0 h-auto overflow-hidden" 
+                                className="w-full bg-transparent border-none text-sm font-semibold text-slate-700 resize-none outline-none p-0 h-auto" 
                                 readOnly={isExportMode} 
                               />
                             </div>
