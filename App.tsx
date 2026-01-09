@@ -68,23 +68,29 @@ const ChartCard: React.FC<{ children: React.ReactNode; title?: string; subtitle?
   </div>
 );
 
-const StatCard: React.FC<{ title: string; value: string; icon: React.ReactNode; trend?: string; trendClassName?: string; subtitle?: string }> = ({ title, value, icon, trend, trendClassName, subtitle }) => (
-  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col transition-all hover:shadow-md h-full">
-    <div className="flex items-center justify-between mb-8">
-      <div className="p-3 bg-slate-50 rounded-xl">{icon}</div>
-      {trend && (
-        <div className={`flex items-center justify-center text-[11px] font-bold px-3 py-1 rounded-full h-7 shadow-sm ${trendClassName || 'text-slate-700 bg-slate-50'}`}>
-          <span>{trend}</span>
-        </div>
-      )}
+const StatCard: React.FC<{ title: string; value: string; icon: React.ReactNode; trend?: string; trendClassName?: string; subtitle?: string }> = ({ title, value, icon, trend, trendClassName, subtitle }) => {
+  // Logic to shrink font size for very large numbers (trillions)
+  const isLargeNumber = value.length > 18;
+  const valueFontSize = isLargeNumber ? 'text-lg' : 'text-xl';
+
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col transition-all hover:shadow-md h-full">
+      <div className="flex items-center justify-between mb-8">
+        <div className="p-3 bg-slate-50 rounded-xl">{icon}</div>
+        {trend && (
+          <div className={`flex items-center justify-center text-[11px] font-bold px-3 py-1 rounded-full h-7 shadow-sm ${trendClassName || 'text-slate-700 bg-slate-50'}`}>
+            <span>{trend}</span>
+          </div>
+        )}
+      </div>
+      <div className="flex flex-col space-y-1">
+        <p className="text-sm font-semibold text-slate-600 m-0 p-0">{title}</p>
+        {subtitle && <p className="text-[10px] text-slate-500 font-semibold m-0 p-0">{subtitle}</p>}
+        <h3 className={`${valueFontSize} font-bold text-slate-900 tabular-nums m-0 p-0 break-all`} title={value}>{value}</h3>
+      </div>
     </div>
-    <div className="flex flex-col space-y-1">
-      <p className="text-sm font-semibold text-slate-600 m-0 p-0">{title}</p>
-      {subtitle && <p className="text-[10px] text-slate-500 font-semibold m-0 p-0">{subtitle}</p>}
-      <h3 className="text-xl font-bold text-slate-900 tabular-nums m-0 p-0 truncate" title={value}>{value}</h3>
-    </div>
-  </div>
-);
+  );
+};
 
 const AutoResizeTextarea = ({ value, onChange, placeholder, className, readOnly = false }: { value: string; onChange?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void; placeholder: string; className: string; readOnly?: boolean }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -242,7 +248,6 @@ const App: React.FC = () => {
       d.setDate(d.getDate() - 1);
       const prevDateStr = d.toISOString().split('T')[0];
 
-      // Ambil activities dari tanggal khusus 8888-12-31 (Persisten Daily Log)
       const [sRes, fRes, aRes, rRes, prevSRes] = await Promise.all([
         supabase.from('sites').select('*').eq('date', date).order('name'),
         supabase.from('fuel_data').select('*').eq('date', date).order('name'),
@@ -274,7 +279,6 @@ const App: React.FC = () => {
         setLocalFuel(initialFuelData.map(f => ({ ...f, biosolar: 0, pertalite: 0, pertadex: 0 })));
       }
 
-      // Handle Daily Activities secara persisten
       if (aRes.data && aRes.data.length > 0) {
         setActivities(aRes.data);
         const updates: Record<string, string> = { 'PHSS': '', 'SANGASANGA': '', 'SANGATTA': '', 'TANJUNG': '', 'ZONA 9': '' };
@@ -360,7 +364,6 @@ const App: React.FC = () => {
   const handleSaveDailyUpdates = async () => {
     setIsSavingDailyUpdates(true);
     try {
-      // Simpan ke tanggal persisten 8888-12-31
       const updates = Object.entries(dailyUpdates).map(([site, text]) => ({
         site, date: '8888-12-31',
         items: [{ category: 'Daily Log', description: text }]
@@ -368,7 +371,6 @@ const App: React.FC = () => {
       const { error } = await supabase.from('activities').upsert(updates, { onConflict: 'site,date' });
       if (error) throw error;
       showToast('Daily Notes berhasil disimpan!');
-      // Refresh local state agar sinkron
       const updatedActs = updates.map(u => ({ site: u.site, items: u.items, date: u.date }));
       setActivities(updatedActs as any);
     } catch (err: any) {
@@ -762,9 +764,9 @@ const App: React.FC = () => {
               (activeView === 'dashboard' ? dashboardStats : weeklyStats) ? (
                 activeView === 'weekly' ? (
                   /* WEEKLY DASHBOARD VIEW LAYOUT */
-                  <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-in fade-in duration-700 overflow-visible items-stretch">
-                    <div className="xl:col-span-3 space-y-8 overflow-visible flex flex-col">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 animate-in fade-in duration-700 overflow-visible items-stretch">
+                    <div className="xl:col-span-3 space-y-5 overflow-visible flex flex-col">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                         <StatCard title="Weekly Good Issue" value={formatCurrency(weeklyStats!.totalIssue)} icon={<ArrowUpRight size={24} className="text-emerald-500" />} />
                         <StatCard title="Weekly Good Receive" value={formatCurrency(weeklyStats!.totalReceive)} icon={<ArrowDownLeft size={24} className="text-rose-500" />} />
                         <StatCard 
@@ -777,19 +779,19 @@ const App: React.FC = () => {
                         />
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <ChartCard title="Weekly Good Issue & Receive" icon={<ArrowLeftRight size={18} />}>
                           <div className="flex flex-col">
                             <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                              <span className="w-[40%]">Location</span><span className="w-[30%] text-center">Issue</span><span className="w-[30%] text-center">Receive</span>
+                              <span className="w-[28%]">Location</span><span className="w-[36%] text-center">Issue</span><span className="w-[36%] text-center">Receive</span>
                             </div>
                             {Object.entries(weeklyStats!.siteAgg)
                               .filter(([name]) => name !== 'ZONA 9')
                               .map(([name, data]: any) => (
                               <div key={name} className="flex items-center px-2 py-3 border-b border-slate-50 last:border-0">
-                                <div className="w-[40%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-xs font-bold text-slate-800 truncate">{name}</span></div>
-                                <div className="w-[30%] text-center font-bold text-emerald-700 text-xs tabular-nums">{data.issued > 0 ? formatCurrency(data.issued) : '-'}</div>
-                                <div className="w-[30%] text-center font-bold text-rose-700 text-xs tabular-nums">{data.received > 0 ? formatCurrency(data.received) : '-'}</div>
+                                <div className="w-[28%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-[11px] font-bold text-slate-800 truncate">{name}</span></div>
+                                <div className="w-[36%] text-center font-bold text-emerald-700 text-[11px] tabular-nums">{data.issued > 0 ? formatCurrency(data.issued) : '-'}</div>
+                                <div className="w-[36%] text-center font-bold text-rose-700 text-[11px] tabular-nums">{data.received > 0 ? formatCurrency(data.received) : '-'}</div>
                               </div>
                             ))}
                           </div>
@@ -816,7 +818,7 @@ const App: React.FC = () => {
                         </ChartCard>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
                         <ChartCard title="Weekly Rig Move" icon={<Truck size={18} />} className="md:col-span-2">
                           <div className="flex flex-col space-y-3">
                             {weeklyRigs.length > 0 ? (
@@ -945,25 +947,25 @@ const App: React.FC = () => {
                   </div>
                 ) : (
                   /* DAILY DASHBOARD VIEW LAYOUT */
-                  <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-in fade-in duration-700 overflow-visible items-stretch">
-                    <div className="xl:col-span-3 space-y-8 overflow-visible flex flex-col">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 animate-in fade-in duration-700 overflow-visible items-stretch">
+                    <div className="xl:col-span-3 space-y-5 overflow-visible flex flex-col">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                         <StatCard title="Total Good Issue" value={formatCurrency(dashboardStats!.totalGoodIssue)} icon={<ArrowUpRight size={24} className="text-emerald-500" />} />
                         <StatCard title="Total Good Receive" value={formatCurrency(dashboardStats!.totalGoodReceive)} icon={<ArrowDownLeft size={24} className="text-rose-500" />} />
                         <StatCard title="Total Stock Value" value={formatCurrency(dashboardStats!.totalStockValue)} icon={<Package size={24} className="text-slate-600" />} trend={dashboardStats!.trends.stock} trendClassName={dashboardStats!.trends.stockIsPositive ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'} />
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <ChartCard title="Good Issue & Receive" icon={<ArrowLeftRight size={18} />}>
                           <div className="flex flex-col">
                             <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                              <span className="w-[40%]">Location</span><span className="w-[30%] text-center">Issue</span><span className="w-[30%] text-center">Receive</span>
+                              <span className="w-[28%]">Location</span><span className="w-[36%] text-center">Issue</span><span className="w-[36%] text-center">Receive</span>
                             </div>
                             {sites.filter(curr => curr.name !== 'ZONA 9').map((data) => (
                               <div key={data.name} className="flex items-center px-2 py-3 border-b border-slate-50 last:border-0">
-                                <div className="w-[40%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-xs font-bold text-slate-800 truncate">{data.name}</span></div>
-                                <div className="w-[30%] text-center font-bold text-emerald-700 text-xs tabular-nums">{data.issued > 0 ? formatCurrency(data.issued) : '-'}</div>
-                                <div className="w-[30%] text-center font-bold text-rose-700 text-xs tabular-nums">{data.received > 0 ? formatCurrency(data.received) : '-'}</div>
+                                <div className="w-[28%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-[11px] font-bold text-slate-800 truncate">{data.name}</span></div>
+                                <div className="w-[36%] text-center font-bold text-emerald-700 text-[11px] tabular-nums">{data.issued > 0 ? formatCurrency(data.issued) : '-'}</div>
+                                <div className="w-[36%] text-center font-bold text-rose-700 text-[11px] tabular-nums">{data.received > 0 ? formatCurrency(data.received) : '-'}</div>
                               </div>
                             ))}
                           </div>
@@ -990,7 +992,7 @@ const App: React.FC = () => {
                         </ChartCard>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
                         <ChartCard title="Person on Board" icon={<Users size={18} />} className="md:col-span-1">
                           <div className="flex flex-col space-y-2.5">
                             {sites.map((site) => (
