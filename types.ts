@@ -1,4 +1,3 @@
-
 export interface SiteData {
   name: string;
   issued: number;
@@ -13,6 +12,13 @@ export interface FuelData {
   biosolar: number;
   pertalite: number;
   pertadex: number;
+}
+
+export interface RigMove {
+  site: string;
+  rig_name: string;
+  from_loc: string;
+  to_loc: string;
 }
 
 export interface Activity {
