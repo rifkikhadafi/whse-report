@@ -309,24 +309,27 @@ const App: React.FC = () => {
 
     const previousTotalStockValue = prevDaySites.length > 0 ? prevDaySites.reduce((acc, curr) => acc + curr.stock, 0) : 0;
 
-    const calcTrendFromStock = (curr: number, prevStock: number) => {
-      if (prevStock === 0) return '0%';
+    const calcTrendPrefix = (curr: number, prevStock: number, isGoodIssue: boolean) => {
+      if (prevStock === 0) return (isGoodIssue ? '-' : '+') + '0.00%';
       const pct = (curr / prevStock) * 100;
-      return `${pct.toFixed(2)}%`;
+      return `${isGoodIssue ? '-' : '+'}${pct.toFixed(2)}%`;
     };
 
-    const calcStockTrend = (curr: number, prev: number) => {
-      if (prev === 0) return '0%';
+    const calcStockTrendValue = (curr: number, prev: number) => {
+      if (prev === 0) return '+0.00%';
       const diff = ((curr - prev) / prev) * 100;
       return `${diff >= 0 ? '+' : ''}${diff.toFixed(2)}%`;
     };
 
+    const stockDiff = current.totalStockValue - previousTotalStockValue;
+
     return {
       ...current,
       trends: {
-        stock: calcStockTrend(current.totalStockValue, previousTotalStockValue),
-        issue: calcTrendFromStock(current.totalGoodIssue, previousTotalStockValue),
-        receive: calcTrendFromStock(current.totalGoodReceive, previousTotalStockValue)
+        stock: calcStockTrendValue(current.totalStockValue, previousTotalStockValue),
+        stockIsPositive: stockDiff >= 0,
+        issue: calcTrendPrefix(current.totalGoodIssue, previousTotalStockValue, true),
+        receive: calcTrendPrefix(current.totalGoodReceive, previousTotalStockValue, false)
       }
     };
   }, [sites, fuelData, rigMoves, prevDaySites]);
@@ -534,21 +537,21 @@ const App: React.FC = () => {
                       value={formatCurrency(dashboardStats.totalGoodIssue)} 
                       icon={<ArrowUpRight size={24} className="text-emerald-500" />} 
                       trend={dashboardStats.trends.issue} 
-                      trendClassName="bg-indigo-50 text-indigo-600"
+                      trendClassName="bg-emerald-50 text-emerald-600"
                     />
                     <StatCard 
                       title="Total Good Receive" 
                       value={formatCurrency(dashboardStats.totalGoodReceive)} 
                       icon={<ArrowDownLeft size={24} className="text-rose-500" />} 
                       trend={dashboardStats.trends.receive} 
-                      trendClassName="bg-indigo-50 text-indigo-600" 
+                      trendClassName="bg-rose-50 text-rose-600" 
                     />
                     <StatCard 
                       title="Total Stock Value" 
                       value={formatCurrency(dashboardStats.totalStockValue)} 
                       icon={<Package size={24} className="text-slate-600" />} 
                       trend={dashboardStats.trends.stock} 
-                      trendClassName={dashboardStats.trends.stock.startsWith('+') ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'} 
+                      trendClassName={dashboardStats.trends.stockIsPositive ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'} 
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -575,9 +578,9 @@ const App: React.FC = () => {
                     </ChartCard>
                     <ChartCard title="Stock Value" subtitle="All Field Zona 9" icon={<TrendingUp size={18} />}>
                       <div className="flex flex-col h-full gap-4">
-                        <div className="w-full h-[180px] relative">
+                        <div className="w-full h-[180px] relative overflow-visible">
                           <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
+                            <PieChart margin={{ top: 10, bottom: 10 }}>
                               <Pie 
                                 data={sites.filter(s => s.stock > 0)} 
                                 innerRadius={45} 
@@ -611,19 +614,19 @@ const App: React.FC = () => {
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-                    <ChartCard title="POB Status" icon={<Users size={18} />} className="md:col-span-1">
-                      <div className="h-[180px] flex flex-col space-y-3 pr-1 overflow-y-auto custom-scrollbar">
+                    <ChartCard title="Person on Board" icon={<Users size={18} />} className="md:col-span-1">
+                      <div className="flex flex-col space-y-2 pr-1 h-[160px] overflow-hidden">
                         {sites.map((site) => (
                           <div key={site.name} className="flex flex-col">
                             <div className="flex items-center gap-2 mb-0.5">
                               <div className="w-1.5 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: site.color || '#cbd5e1' }}></div>
                               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight truncate">{site.name}</span>
                             </div>
-                            <span className="text-[12px] font-bold text-slate-900 ml-3.5 tabular-nums">{site.pob}</span>
+                            <span className="text-[12px] font-bold text-slate-900 ml-3.5 tabular-nums leading-none">{site.pob}</span>
                           </div>
                         ))}
                       </div>
-                      <div className="flex flex-col items-center pt-6 border-t border-slate-100 mt-4 overflow-visible">
+                      <div className="flex flex-col items-center pt-4 border-t border-slate-100 mt-4 overflow-visible">
                         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total POB</h3>
                         <div className="relative w-28 h-28 overflow-visible">
                           <ResponsiveContainer width="100%" height="100%">
@@ -641,17 +644,17 @@ const App: React.FC = () => {
                     </ChartCard>
 
                     <ChartCard title="Support Rig Move" icon={<Truck size={18} />} className="md:col-span-1">
-                      <div className="h-[180px] space-y-3 pr-1 overflow-y-auto custom-scrollbar">
+                      <div className="flex flex-col space-y-3 pr-1 h-[160px] overflow-hidden">
                         {rigMoves.length > 0 ? (
-                          rigMoves.map((rm, idx) => (
-                            <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0 mb-2">
+                          rigMoves.slice(0, 4).map((rm, idx) => (
+                            <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0 mb-0.5">
                               <div className="flex items-center gap-2 mb-1">
                                 <div className="w-1.5 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: sites.find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div>
                                 <span className="text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate">
                                   {rm.site} - {rm.rig_name}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium ml-3.5">
+                              <div className="flex items-center gap-2 text-[9px] text-slate-500 font-medium ml-3.5 leading-none">
                                 <span className="truncate">{rm.from_loc}</span>
                                 <MoveRight size={10} className="text-indigo-400 shrink-0" />
                                 <span className="truncate">{rm.to_loc}</span>
@@ -665,7 +668,7 @@ const App: React.FC = () => {
                           </div>
                         )}
                       </div>
-                      <div className="flex flex-col items-center pt-6 border-t border-slate-100 mt-4 overflow-visible">
+                      <div className="flex flex-col items-center pt-4 border-t border-slate-100 mt-4 overflow-visible">
                         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">TOTAL MOVE</h3>
                         <div className="relative w-28 h-28 overflow-visible">
                           <ResponsiveContainer width="100%" height="100%">
@@ -697,87 +700,90 @@ const App: React.FC = () => {
 
                     <ChartCard title="Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-2">
                       <div className="flex flex-col h-full">
-                        <div className="h-[180px] flex flex-col justify-between overflow-y-auto custom-scrollbar pr-1">
-                          <div className="grid grid-cols-2 gap-x-8 gap-y-4 px-1 w-full">
+                        <div className="flex flex-col justify-between h-[160px] overflow-hidden pr-1">
+                          <div className="grid grid-cols-2 gap-x-8 gap-y-3 px-1 w-full">
                             {fuelData.map((data) => (
                               <div key={data.name} className="flex flex-col">
                                 <div className="flex items-center gap-2 mb-1">
                                   <div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: sites.find(s => s.name === data.name)?.color || '#94a3b8' }}></div>
-                                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-tight truncate">{data.name}</span>
+                                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight truncate">{data.name}</span>
                                 </div>
                                 <div className="flex gap-4 ml-3.5 tabular-nums">
                                   <div className="flex flex-col">
-                                    <span className="text-slate-300 font-bold uppercase text-[8px] mb-0.5">BIO</span>
-                                    <span className="text-xs font-bold text-slate-900 leading-none">{formatNumber(data.biosolar)}</span>
+                                    <span className="text-slate-300 font-bold uppercase text-[7px] mb-0.5">BIO</span>
+                                    <span className="text-[11px] font-bold text-slate-900 leading-none">{formatNumber(data.biosolar)}</span>
                                   </div>
                                   <div className="flex flex-col">
-                                    <span className="text-slate-300 font-bold uppercase text-[8px] mb-0.5">PERT</span>
-                                    <span className="text-xs font-bold text-slate-900 leading-none">{formatNumber(data.pertalite)}</span>
+                                    <span className="text-slate-300 font-bold uppercase text-[7px] mb-0.5">PERT</span>
+                                    <span className="text-[11px] font-bold text-slate-900 leading-none">{formatNumber(data.pertalite)}</span>
                                   </div>
                                   <div className="flex flex-col">
-                                    <span className="text-slate-300 font-bold uppercase text-[8px] mb-0.5">DEX</span>
-                                    <span className="text-xs font-bold text-slate-900 leading-none">{formatNumber(data.pertadex)}</span>
+                                    <span className="text-slate-300 font-bold uppercase text-[7px] mb-0.5">DEX</span>
+                                    <span className="text-[11px] font-bold text-slate-900 leading-none">{formatNumber(data.pertadex)}</span>
                                   </div>
                                 </div>
                               </div>
                             ))}
                           </div>
-                          <div className="flex items-center justify-center gap-4 bg-slate-50 py-2 rounded-xl mt-4">
+                          <div className="flex items-center justify-center gap-4 bg-slate-50 py-2 rounded-xl mt-2">
                             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">TOTAL</span>
                             <div className="flex items-baseline gap-1.5">
-                              <span className="text-xl font-black text-indigo-600 tabular-nums">{formatNumber(dashboardStats.grandTotalFuel)}</span>
-                              <span className="text-[9px] text-slate-400 font-bold uppercase">LTR</span>
+                              <span className="text-xl font-black text-indigo-600 tabular-nums leading-none">{formatNumber(dashboardStats.grandTotalFuel)}</span>
+                              <span className="text-[9px] text-slate-400 font-bold uppercase leading-none">LTR</span>
                             </div>
                           </div>
                         </div>
 
-                        <div className="flex flex-col py-4 border-t border-slate-100 mt-6 px-2">
+                        <div className="flex flex-col py-4 border-t border-slate-100 mt-4 px-2 overflow-visible">
                           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center mb-4">SUB-TOTAL FUEL</span>
-                          <div className="grid grid-cols-3 gap-1">
-                            <div className="flex flex-col items-center">
-                              <div className="w-16 h-16 relative overflow-visible">
+                          <div className="grid grid-cols-3 gap-1 overflow-visible">
+                            <div className="flex flex-col items-center overflow-visible">
+                              <div className="w-28 h-28 relative overflow-visible">
                                 <ResponsiveContainer width="100%" height="100%">
                                   <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                                    <Pie data={biosolarSegments} innerRadius={18} outerRadius={26} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                    <Pie data={biosolarSegments} innerRadius={22} outerRadius={38} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
                                       {biosolarSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
                                     </Pie>
                                   </PieChart>
                                 </ResponsiveContainer>
                                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                  <span className="text-[9px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalBiosolar)}</span>
+                                  <span className="text-[10px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalBiosolar)}</span>
+                                  <span className="text-[7px] font-bold text-slate-400 leading-none">L</span>
                                 </div>
                               </div>
-                              <span className="text-[7px] font-bold text-slate-400 mt-1 uppercase">BIOSOLAR</span>
+                              <span className="text-[8px] font-bold text-slate-400 mt-1 uppercase">BIOSOLAR</span>
                             </div>
-                            <div className="flex flex-col items-center">
-                              <div className="w-16 h-16 relative overflow-visible">
+                            <div className="flex flex-col items-center overflow-visible">
+                              <div className="w-28 h-28 relative overflow-visible">
                                 <ResponsiveContainer width="100%" height="100%">
                                   <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                                    <Pie data={pertaliteSegments} innerRadius={18} outerRadius={26} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                    <Pie data={pertaliteSegments} innerRadius={22} outerRadius={38} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
                                       {pertaliteSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
                                     </Pie>
                                   </PieChart>
                                 </ResponsiveContainer>
                                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                  <span className="text-[9px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertalite)}</span>
+                                  <span className="text-[10px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertalite)}</span>
+                                  <span className="text-[7px] font-bold text-slate-400 leading-none">L</span>
                                 </div>
                               </div>
-                              <span className="text-[7px] font-bold text-slate-400 mt-1 uppercase">PERTALITE</span>
+                              <span className="text-[8px] font-bold text-slate-400 mt-1 uppercase">PERTALITE</span>
                             </div>
-                            <div className="flex flex-col items-center">
-                              <div className="w-16 h-16 relative overflow-visible">
+                            <div className="flex flex-col items-center overflow-visible">
+                              <div className="w-28 h-28 relative overflow-visible">
                                 <ResponsiveContainer width="100%" height="100%">
                                   <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                                    <Pie data={pertadexSegments} innerRadius={18} outerRadius={26} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                    <Pie data={pertadexSegments} innerRadius={22} outerRadius={38} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
                                       {pertadexSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
                                     </Pie>
                                   </PieChart>
                                 </ResponsiveContainer>
                                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                  <span className="text-[9px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertadex)}</span>
+                                  <span className="text-[10px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertadex)}</span>
+                                  <span className="text-[7px] font-bold text-slate-400 leading-none">L</span>
                                 </div>
                               </div>
-                              <span className="text-[7px] font-bold text-slate-400 mt-1 uppercase">PERTADEX</span>
+                              <span className="text-[8px] font-bold text-slate-400 mt-1 uppercase">PERTADEX</span>
                             </div>
                           </div>
                         </div>
@@ -998,6 +1004,8 @@ const App: React.FC = () => {
           cursor: pointer;
         }
         .recharts-pie-sector:focus { outline: none; }
+        .recharts-wrapper { overflow: visible !important; }
+        svg.recharts-surface { overflow: visible !important; }
       `}</style>
     </div>
   );
