@@ -69,7 +69,6 @@ const ChartCard: React.FC<{ children: React.ReactNode; title?: string; subtitle?
 );
 
 const StatCard: React.FC<{ title: string; value: string; icon: React.ReactNode; trend?: string; trendClassName?: string; subtitle?: string }> = ({ title, value, icon, trend, trendClassName, subtitle }) => {
-  // Logic to shrink font size for very large numbers (trillions)
   const isLargeNumber = value.length > 18;
   const valueFontSize = isLargeNumber ? 'text-lg' : 'text-xl';
 
@@ -431,18 +430,49 @@ const App: React.FC = () => {
   const handleBulkSave = async () => {
     setIsSaving(true);
     try {
-      const siteUpdates = localSites.map(s => ({ ...s, date: selectedDate }));
-      await supabase.from('sites').upsert(siteUpdates, { onConflict: 'name,date' });
-      const fuelUpdates = localFuel.map(f => ({ ...f, date: selectedDate }));
-      await supabase.from('fuel_data').upsert(fuelUpdates, { onConflict: 'name,date' });
-      await supabase.from('rig_moves').delete().eq('date', selectedDate);
+      // 1. Simpan Site Data
+      const siteUpdates = localSites.map(s => {
+        const { id, created_at, ...cleanSite } = s as any;
+        return { ...cleanSite, date: selectedDate };
+      });
+      const sResult = await supabase.from('sites').upsert(siteUpdates, { onConflict: 'name,date' });
+      if (sResult.error) throw new Error(`Sites: ${sResult.error.message}`);
+
+      // 2. Simpan Fuel Data
+      const fuelUpdates = localFuel.map(f => {
+        const { id, created_at, ...cleanFuel } = f as any;
+        return { ...cleanFuel, date: selectedDate };
+      });
+      const fResult = await supabase.from('fuel_data').upsert(fuelUpdates, { onConflict: 'name,date' });
+      if (fResult.error) throw new Error(`Fuel: ${fResult.error.message}`);
+
+      // 3. Simpan Rig Moves
+      const rDel = await supabase.from('rig_moves').delete().eq('date', selectedDate);
+      if (rDel.error) throw new Error(`Rig Delete: ${rDel.error.message}`);
+
       if (localRigMoves.length > 0) {
-        await supabase.from('rig_moves').insert(localRigMoves.map(rm => ({ ...rm, date: selectedDate })));
+        const cleanRigMoves = localRigMoves.map(rm => ({
+          site: rm.site,
+          rig_name: rm.rig_name,
+          from_loc: rm.from_loc,
+          to_loc: rm.to_loc,
+          move_date: rm.move_date || selectedDate,
+          date: selectedDate
+        }));
+        const rIns = await supabase.from('rig_moves').insert(cleanRigMoves);
+        if (rIns.error) {
+          if (rIns.error.message.includes('column "move_date"')) {
+            throw new Error("Gagal: Kolom 'move_date' belum ada di database. Silakan jalankan update SQL di Supabase.");
+          }
+          throw new Error(`Rig Insert: ${rIns.error.message}`);
+        }
       }
+
       showToast('Data berhasil disimpan!');
       await fetchData(selectedDate);
     } catch (err: any) {
-      showToast('Error: ' + err.message, true);
+      console.error("Bulk Save Error:", err);
+      showToast(err.message, true);
     } finally {
       setIsSaving(false);
     }
@@ -613,8 +643,8 @@ const App: React.FC = () => {
       {!isExportMode && (
         <aside className="hidden lg:flex flex-col w-24 bg-slate-900 text-slate-400 h-screen sticky top-0 no-print z-50">
           <div className="py-8 flex flex-col items-center">
-            <div className="w-12 h-12 bg-indigo-500 rounded-2xl flex items-center justify-center mb-10 shadow-lg shadow-indigo-500/20">
-              <LayoutDashboard className="text-white" size={24} />
+            <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mb-10 shadow-lg shadow-black/20 overflow-hidden p-2">
+              <img src="./logo.png" alt="Z9 Logo" className="w-full h-full object-contain" />
             </div>
             <nav className="flex-1 w-full flex flex-col items-center space-y-4 px-2">
               <button onClick={() => setActiveView('dashboard')} className={`group w-full aspect-square flex flex-col items-center justify-center gap-1.5 rounded-2xl transition-all ${activeView === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'hover:bg-slate-800 hover:text-white'}`}>
@@ -637,33 +667,36 @@ const App: React.FC = () => {
       <main className={`flex-1 ${isExportMode ? '' : 'overflow-y-auto h-screen scroll-smooth'}`}>
         <div className={`p-4 lg:p-10 min-h-full mx-auto ${isExportMode ? 'export-container' : 'max-w-[1600px]'}`} ref={dashboardRef}>
           <header className={`flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 relative z-10 ${isExportMode ? 'pb-6 border-b border-slate-100' : ''}`}>
-            <div>
-              <h1 className="text-3xl font-black text-slate-900 tracking-tight">
-                Warehouse Operation Zona 9 {activeView === 'weekly' ? 'Weekly' : (activeView === 'input' ? 'Data Entry' : 'Daily')} Dashboard
-              </h1>
-              <div className="flex items-center gap-4 mt-1.5">
-                <div className="flex items-center gap-2 text-slate-600 font-bold">
-                  <Calendar size={16} className="text-indigo-600" />
-                  <span className="text-sm">
-                    {activeView === 'weekly' 
-                      ? `Laporan Mingguan • ${new Date(startDate).toLocaleDateString('id-ID')} - ${new Date(endDate).toLocaleDateString('id-ID')}` 
-                      : `Laporan Operasional • ${formattedSelectedDate}`}
-                  </span>
-                </div>
-                {!isExportMode && (
-                  <div className="flex items-center gap-2 no-print relative">
-                    {activeView === 'weekly' ? (
-                      <div className="flex items-center gap-2">
-                        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                        <span className="text-xs font-bold text-slate-600">s/d</span>
-                        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-9 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                      </div>
-                    ) : (
-                      <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                    )}
+            <div className="flex items-center gap-5">
+              {!isExportMode && <img src="./logo.png" alt="Z9 Logo" className="w-14 h-14 object-contain" />}
+              <div>
+                <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+                  Warehouse Operation Zona 9 {activeView === 'weekly' ? 'Weekly' : (activeView === 'input' ? 'Data Entry' : 'Daily')} Dashboard
+                </h1>
+                <div className="flex items-center gap-4 mt-1.5">
+                  <div className="flex items-center gap-2 text-slate-600 font-bold">
+                    <Calendar size={16} className="text-indigo-600" />
+                    <span className="text-sm">
+                      {activeView === 'weekly' 
+                        ? `Laporan Mingguan • ${new Date(startDate).toLocaleDateString('id-ID')} - ${new Date(endDate).toLocaleDateString('id-ID')}` 
+                        : `Laporan Operasional • ${formattedSelectedDate}`}
+                    </span>
                   </div>
-                )}
-                {isLoading && !isExportMode && <Loader2 size={14} className="animate-spin text-indigo-400 ml-2" />}
+                  {!isExportMode && (
+                    <div className="flex items-center gap-2 no-print relative">
+                      {activeView === 'weekly' ? (
+                        <div className="flex items-center gap-2">
+                          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                          <span className="text-xs font-bold text-slate-600">s/d</span>
+                          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-9 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                        </div>
+                      ) : (
+                        <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                      )}
+                    </div>
+                  )}
+                  {isLoading && !isExportMode && <Loader2 size={14} className="animate-spin text-indigo-400 ml-2" />}
+                </div>
               </div>
             </div>
             {!isExportMode && (
@@ -777,7 +810,6 @@ const App: React.FC = () => {
             (activeView === 'dashboard' || activeView === 'weekly') ? (
               (activeView === 'dashboard' ? dashboardStats : weeklyStats) ? (
                 activeView === 'weekly' ? (
-                  /* WEEKLY DASHBOARD VIEW LAYOUT */
                   <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 animate-in fade-in duration-700 overflow-visible items-stretch">
                     <div className="xl:col-span-3 space-y-5 overflow-visible flex flex-col">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -968,7 +1000,6 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  /* DAILY DASHBOARD VIEW LAYOUT */
                   <div className="grid grid-cols-1 xl:grid-cols-5 gap-5 animate-in fade-in duration-700 overflow-visible items-stretch">
                     <div className="xl:col-span-3 space-y-5 overflow-visible flex flex-col">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
