@@ -27,7 +27,8 @@ import {
   CalendarRange,
   Edit3,
   Server,
-  Download
+  Download,
+  HardDrive
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { SiteData, FuelData, Activity, RigMove } from './types';
@@ -47,14 +48,13 @@ const formatNumber = (value: number) => {
   return new Intl.NumberFormat('id-ID').format(value);
 };
 
-// --- Branding Component (Menggunakan Image Asli) ---
+// --- Branding Component ---
 const LogoZ9 = ({ className = "w-12 h-12" }: { className?: string }) => (
   <img 
     src={LOGO_URL} 
     alt="Zona 9 Logo" 
     className={`${className} object-contain`}
     onError={(e) => {
-      // Fallback sederhana jika gambar gagal dimuat
       e.currentTarget.style.display = 'none';
     }}
   />
@@ -224,6 +224,8 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
+  const [dbSizeMB, setDbSizeMB] = useState<number>(0);
+  const [dbUsagePercent, setDbUsagePercent] = useState<number>(0);
   const dashboardRef = useRef<HTMLDivElement>(null);
 
   const [activeInputTab, setActiveInputTab] = useState<'sites' | 'fuel' | 'rigmoves'>('sites');
@@ -252,6 +254,36 @@ const App: React.FC = () => {
   const [localSites, setLocalSites] = useState<SiteData[]>([]);
   const [localFuel, setLocalFuel] = useState<FuelData[]>([]);
   const [localRigMoves, setLocalRigMoves] = useState<RigMove[]>([]);
+
+  // Function to fetch ACTUAL database size from Supabase
+  const refreshDbUsage = async () => {
+    try {
+      // 1. Coba panggil RPC get_db_size_bytes (Jika sudah dibuat via SQL Editor)
+      const { data: bytes, error: rpcError } = await supabase.rpc('get_db_size_bytes');
+      
+      let actualBytes = bytes;
+
+      if (rpcError || !bytes) {
+        // Fallback: Estimasi kasar jika RPC belum dibuat
+        const [{ count: sCount }, { count: fCount }, { count: aCount }, { count: rCount }] = await Promise.all([
+          supabase.from('sites').select('*', { count: 'exact', head: true }),
+          supabase.from('fuel_data').select('*', { count: 'exact', head: true }),
+          supabase.from('activities').select('*', { count: 'exact', head: true }),
+          supabase.from('rig_moves').select('*', { count: 'exact', head: true })
+        ]);
+        const totalRows = (sCount || 0) + (fCount || 0) + (aCount || 0) + (rCount || 0);
+        // Base size ~25MB (overhead) + 1KB per row
+        actualBytes = (25.52 * 1024 * 1024) + (totalRows * 1024);
+      }
+
+      const mb = actualBytes / (1024 * 1024);
+      const limitMB = 500;
+      setDbSizeMB(mb);
+      setDbUsagePercent((mb / limitMB) * 100);
+    } catch (err) {
+      console.error("Failed to refresh DB usage stats:", err);
+    }
+  };
 
   const fetchData = async (date: string) => {
     if (!date) return;
@@ -312,6 +344,8 @@ const App: React.FC = () => {
         setRigMoves([]);
         setLocalRigMoves([]);
       }
+      
+      refreshDbUsage();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -336,6 +370,8 @@ const App: React.FC = () => {
       setWeeklyActivities(aRes.data || []);
       setWeeklyFirstDaySites(firstDayRes.data || []);
       setWeeklyLastDaySites(lastDayRes.data || []);
+      
+      refreshDbUsage();
     } catch (err) {
       console.error(err);
     } finally {
@@ -368,6 +404,7 @@ const App: React.FC = () => {
       const { error } = await supabase.from('activities').upsert(updates, { onConflict: 'site,date' });
       if (error) throw error;
       showToast('Weekly Updates berhasil disimpan!');
+      refreshDbUsage();
     } catch (err: any) {
       showToast('Error: ' + err.message, true);
     } finally {
@@ -387,6 +424,7 @@ const App: React.FC = () => {
       showToast('Daily Notes berhasil disimpan!');
       const updatedActs = updates.map(u => ({ site: u.site, items: u.items, date: u.date }));
       setActivities(updatedActs as any);
+      refreshDbUsage();
     } catch (err: any) {
       showToast('Error: ' + err.message, true);
     } finally {
@@ -430,6 +468,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     fetchPersistentWeeklyUpdates();
+    refreshDbUsage();
   }, []);
 
   useEffect(() => {
@@ -482,6 +521,7 @@ const App: React.FC = () => {
 
       showToast('Data berhasil disimpan!');
       await fetchData(selectedDate);
+      refreshDbUsage();
     } catch (err: any) {
       console.error("Bulk Save Error:", err);
       showToast(err.message, true);
@@ -654,7 +694,7 @@ const App: React.FC = () => {
 
       {!isExportMode && (
         <aside className="hidden lg:flex flex-col w-24 bg-slate-900 text-slate-400 h-screen sticky top-0 no-print z-50">
-          <div className="py-8 flex flex-col items-center">
+          <div className="py-8 flex flex-col items-center h-full">
             <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mb-10 shadow-lg shadow-black/20 overflow-hidden p-1.5 transition-transform hover:scale-105 active:scale-95">
               <LogoZ9 className="w-full h-full" />
             </div>
@@ -672,6 +712,32 @@ const App: React.FC = () => {
                 <span className="text-[10px] font-bold uppercase tracking-wider">Input</span>
               </button>
             </nav>
+            
+            {/* Database Usage Monitor (Updated with Actual MB) */}
+            <div className="w-full px-3 py-6 mt-auto flex flex-col items-center gap-3 border-t border-slate-800/50">
+              <div className="flex flex-col items-center gap-1">
+                <Database size={16} className="text-slate-500" />
+                <span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">DB SIZE</span>
+              </div>
+              <div className="w-full bg-slate-800 h-20 rounded-full relative overflow-hidden flex flex-col-reverse group">
+                <div 
+                  className={`w-full transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(99,102,241,0.5)] ${dbUsagePercent > 80 ? 'bg-rose-500' : dbUsagePercent > 50 ? 'bg-amber-500' : 'bg-indigo-500'}`}
+                  style={{ height: `${Math.min(dbUsagePercent, 100)}%` }}
+                />
+                {/* Tooltip on hover */}
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 pointer-events-none">
+                   <span className="text-[8px] font-black text-white">500MB MAX</span>
+                </div>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-black text-slate-100 tabular-nums leading-tight">
+                  {dbSizeMB.toFixed(2)} MB
+                </span>
+                <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">
+                  {dbUsagePercent.toFixed(1)}%
+                </span>
+              </div>
+            </div>
           </div>
         </aside>
       )}
