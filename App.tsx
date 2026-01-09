@@ -47,40 +47,40 @@ const formatNumber = (value: number) => {
 // --- Shared Components ---
 
 const SectionHeader: React.FC<{ title: string; subtitle?: string; icon: React.ReactNode }> = ({ title, subtitle, icon }) => (
-  <div className="flex items-center gap-3 mb-4 pdf-flex-row">
-    <div className="p-2 bg-slate-900 text-white rounded-lg flex-shrink-0 pdf-shift-down">
+  <div className="flex items-center gap-3 mb-4">
+    <div className="p-2 bg-slate-900 text-white rounded-lg flex-shrink-0">
       {icon}
     </div>
     <div className="flex flex-col justify-center">
-      <h2 className="text-base font-semibold text-slate-900 leading-tight m-0 p-0 pdf-no-clip">{title}</h2>
-      {subtitle && <p className="text-[10px] text-slate-500 mt-0.5 font-medium m-0 p-0 pdf-no-clip">{subtitle}</p>}
+      <h2 className="text-base font-semibold text-slate-900 leading-tight m-0 p-0">{title}</h2>
+      {subtitle && <p className="text-[10px] text-slate-500 mt-0.5 font-medium m-0 p-0">{subtitle}</p>}
     </div>
   </div>
 );
 
 const ChartCard: React.FC<{ children: React.ReactNode; title?: string; subtitle?: string; icon?: React.ReactNode; className?: string }> = ({ children, title, subtitle, icon, className = "" }) => (
-  <div className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col ${className} pdf-container`}>
+  <div className={`bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col ${className}`}>
     {title && icon && <SectionHeader title={title} subtitle={subtitle} icon={icon} />}
-    <div className="w-full flex-1 flex flex-col pdf-overflow-visible">
+    <div className="w-full flex-1 flex flex-col">
       {children}
     </div>
   </div>
 );
 
 const StatCard: React.FC<{ title: string; value: string; icon: React.ReactNode; trend?: string; trendClassName?: string; subtitle?: string }> = ({ title, value, icon, trend, trendClassName, subtitle }) => (
-  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col transition-all hover:shadow-md h-full pdf-container">
-    <div className="flex items-center justify-between mb-8 pdf-flex-row">
-      <div className="p-3 bg-slate-50 rounded-xl pdf-shift-down">{icon}</div>
+  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col transition-all hover:shadow-md h-full">
+    <div className="flex items-center justify-between mb-8">
+      <div className="p-3 bg-slate-50 rounded-xl">{icon}</div>
       {trend && (
-        <div className={`flex items-center justify-center text-[11px] font-bold px-3 py-1 rounded-full h-7 shadow-sm pdf-shift-down ${trendClassName || 'text-slate-600 bg-slate-50'}`}>
-          <span className="pdf-no-clip">{trend}</span>
+        <div className={`flex items-center justify-center text-[11px] font-bold px-3 py-1 rounded-full h-7 shadow-sm ${trendClassName || 'text-slate-600 bg-slate-50'}`}>
+          <span>{trend}</span>
         </div>
       )}
     </div>
     <div className="flex flex-col space-y-1">
-      <p className="text-sm font-medium text-slate-500 m-0 p-0 pdf-no-clip">{title}</p>
-      {subtitle && <p className="text-[10px] text-slate-400 font-medium m-0 p-0 pdf-no-clip">{subtitle}</p>}
-      <h3 className="text-xl font-bold text-slate-900 tabular-nums m-0 p-0 truncate pdf-no-clip pdf-val-fix" title={value}>{value}</h3>
+      <p className="text-sm font-medium text-slate-500 m-0 p-0">{title}</p>
+      {subtitle && <p className="text-[10px] text-slate-400 font-medium m-0 p-0">{subtitle}</p>}
+      <h3 className="text-xl font-bold text-slate-900 tabular-nums m-0 p-0 truncate" title={value}>{value}</h3>
     </div>
   </div>
 );
@@ -315,7 +315,6 @@ const App: React.FC = () => {
     e.target.select();
   };
 
-  // Aggregated data for rig move pie chart
   const rigMovesBySite = useMemo(() => {
     const counts: Record<string, { count: number; color: string }> = {};
     rigMoves.forEach(rm => {
@@ -332,15 +331,23 @@ const App: React.FC = () => {
     }));
   }, [rigMoves, sites]);
 
-  // Fuel aggregation for sub-total pie chart
-  const fuelAggregated = useMemo(() => {
-    if (!dashboardStats) return [];
-    return [
-      { name: 'Biosolar', value: dashboardStats.totalBiosolar, color: '#4f46e5' },
-      { name: 'Pertalite', value: dashboardStats.totalPertalite, color: '#10b981' },
-      { name: 'Pertadex', value: dashboardStats.totalPertadex, color: '#f59e0b' }
-    ].filter(v => v.value > 0);
-  }, [dashboardStats]);
+  const biosolarSegments = useMemo(() => sites.map(s => ({
+    name: s.name,
+    value: fuelData.find(f => f.name === s.name)?.biosolar || 0,
+    color: s.color
+  })).filter(d => d.value > 0), [sites, fuelData]);
+
+  const pertaliteSegments = useMemo(() => sites.map(s => ({
+    name: s.name,
+    value: fuelData.find(f => f.name === s.name)?.pertalite || 0,
+    color: s.color
+  })).filter(d => d.value > 0), [sites, fuelData]);
+
+  const pertadexSegments = useMemo(() => sites.map(s => ({
+    name: s.name,
+    value: fuelData.find(f => f.name === s.name)?.pertadex || 0,
+    color: s.color
+  })).filter(d => d.value > 0), [sites, fuelData]);
 
   return (
     <div className="min-h-screen flex bg-slate-50/50 overflow-hidden font-inter">
@@ -380,11 +387,11 @@ const App: React.FC = () => {
       <main className="flex-1 overflow-y-auto h-screen p-4 lg:p-10 scroll-smooth" ref={dashboardRef}>
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 relative z-50">
           <div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight pdf-no-clip">Warehouse Operation Zona 9 Dashboard</h1>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight">Warehouse Operation Zona 9 Dashboard</h1>
             <div className="flex items-center gap-4 mt-1.5">
-              <div className="flex items-center gap-2 text-slate-500 font-semibold pdf-overflow-visible">
-                <Calendar size={16} className="text-indigo-500 pdf-shift-down" />
-                <span className="text-sm pdf-no-clip">Laporan Harian • {formattedSelectedDate}</span>
+              <div className="flex items-center gap-2 text-slate-500 font-semibold">
+                <Calendar size={16} className="text-indigo-500" />
+                <span className="text-sm">Laporan Harian • {formattedSelectedDate}</span>
               </div>
               <div className="flex items-center gap-2 no-print relative">
                 <input 
@@ -422,7 +429,7 @@ const App: React.FC = () => {
                   <StatCard title="Total Stock Value" value={formatCurrency(dashboardStats.totalStockValue)} icon={<Package size={24} className="text-slate-600" />} trend="+2.4%" trendClassName="bg-rose-50 text-rose-600" />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <ChartCard title="Good Issue & Receive" subtitle="All Zona 9 Field" icon={<ArrowLeftRight size={18} />}>
+                  <ChartCard title="Good Issue & Receive" subtitle="All Field Zona 9" icon={<ArrowLeftRight size={18} />}>
                     <div className="flex flex-col h-[280px]">
                       <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                         <span className="w-[40%] text-left">Location</span>
@@ -430,13 +437,11 @@ const App: React.FC = () => {
                         <span className="w-[30%] text-center">Good Receive</span>
                       </div>
                       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1">
-                        {sites.map((site, index) => (
+                        {sites.filter(s => s.name !== 'ZONA 9').map((site, index) => (
                           <div key={index} className="flex items-center px-2 py-3 hover:bg-slate-50 rounded-xl border-b border-slate-50 last:border-0 transition-colors">
                             <div className="w-[40%] flex items-center gap-2">
-                              {site.name !== 'ZONA 9' && (
-                                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: site.color || '#cbd5e1' }}></span>
-                              )}
-                              <span className={`text-xs font-bold text-slate-700 truncate ${site.name === 'ZONA 9' ? 'ml-0 font-black' : ''}`}>{site.name}</span>
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: site.color || '#cbd5e1' }}></span>
+                              <span className="text-xs font-bold text-slate-700 truncate">{site.name}</span>
                             </div>
                             <div className="w-[30%] text-center font-semibold text-emerald-600 text-xs tabular-nums">{site.issued > 0 ? formatCurrency(site.issued) : '-'}</div>
                             <div className="w-[30%] text-center font-semibold text-rose-600 text-xs tabular-nums">{site.received > 0 ? formatCurrency(site.received) : '-'}</div>
@@ -445,7 +450,7 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   </ChartCard>
-                  <ChartCard title="Stock Value" subtitle="All Zona 9 Field" icon={<TrendingUp size={18} />}>
+                  <ChartCard title="Stock Value" subtitle="All Field Zona 9" icon={<TrendingUp size={18} />}>
                     <div className="flex flex-col h-full gap-4">
                       <div className="w-full h-[180px]">
                         <ResponsiveContainer width="100%" height="100%">
@@ -480,9 +485,11 @@ const App: React.FC = () => {
                     </div>
                   </ChartCard>
                 </div>
+                
+                {/* Lower Row: POB, Rig Move, and Fuel Consumption aligned horizontally */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                   <ChartCard title="Person on Board" icon={<Users size={18} />} className="md:col-span-1">
-                    <div className="h-[210px] space-y-3 pr-1 overflow-y-auto custom-scrollbar">
+                    <div className="h-[210px] flex flex-col space-y-3 pr-1">
                       {sites.map((site) => (
                         <div key={site.name} className="flex flex-col">
                           <div className="flex items-center gap-2 mb-0.5">
@@ -493,7 +500,7 @@ const App: React.FC = () => {
                         </div>
                       ))}
                     </div>
-                    <div className="flex flex-col items-center pt-8 border-t border-slate-100 mt-4">
+                    <div className="flex flex-col items-center pt-8 border-t border-slate-100 mt-6">
                       <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total POB</h3>
                       <div className="relative w-28 h-28">
                         <ResponsiveContainer width="100%" height="100%">
@@ -509,6 +516,7 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   </ChartCard>
+
                   <ChartCard title="Support Rig Move" icon={<Truck size={18} />} className="md:col-span-1">
                     <div className="h-[210px] space-y-3 pr-1 overflow-y-auto custom-scrollbar">
                       {rigMoves.length > 0 ? (
@@ -534,7 +542,7 @@ const App: React.FC = () => {
                         </div>
                       )}
                     </div>
-                    <div className="flex flex-col items-center pt-8 border-t border-slate-100 mt-4">
+                    <div className="flex flex-col items-center pt-8 border-t border-slate-100 mt-6">
                       <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">TOTAL MOVE</h3>
                       <div className="relative w-28 h-28">
                         <ResponsiveContainer width="100%" height="100%">
@@ -563,58 +571,96 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   </ChartCard>
-                  <ChartCard title="BBM Consumption" icon={<Fuel size={18} />} className="md:col-span-2">
-                    <div className="min-h-[210px] flex flex-col justify-between">
-                      <div className="grid grid-cols-2 gap-x-8 gap-y-5 px-1 w-full">
-                        {fuelData.map((data) => (
-                          <div key={data.name} className="flex flex-col">
-                            <div className="flex items-center gap-2 mb-1">
-                              <div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: sites.find(s => s.name === data.name)?.color || '#94a3b8' }}></div>
-                              <span className="text-[10px] font-bold text-slate-500 uppercase truncate">{data.name}</span>
+
+                  <ChartCard title="Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-2">
+                    <div className="flex flex-col h-full">
+                      {/* Grid Site Content - Top portion (Increased to 210px to accommodate Total compactly) */}
+                      <div className="h-[210px] flex flex-col justify-between">
+                        <div className="grid grid-cols-2 gap-x-8 gap-y-4 px-1 w-full">
+                          {fuelData.map((data) => (
+                            <div key={data.name} className="flex flex-col">
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: sites.find(s => s.name === data.name)?.color || '#94a3b8' }}></div>
+                                <span className="text-[11px] font-black text-slate-500 uppercase tracking-tight truncate">{data.name}</span>
+                              </div>
+                              <div className="flex gap-6 ml-3.5 tabular-nums">
+                                <div className="flex flex-col">
+                                  <span className="text-slate-300 font-black uppercase text-[8px] mb-0.5">BIO</span>
+                                  <span className="text-xs font-black text-slate-900 leading-none">{formatNumber(data.biosolar)}</span>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-slate-300 font-black uppercase text-[8px] mb-0.5">PERT</span>
+                                  <span className="text-xs font-black text-slate-900 leading-none">{formatNumber(data.pertalite)}</span>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-slate-300 font-black uppercase text-[8px] mb-0.5">DEX</span>
+                                  <span className="text-xs font-black text-slate-900 leading-none">{formatNumber(data.pertadex)}</span>
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex gap-4 ml-3.5 tabular-nums">
-                              <div className="flex flex-col">
-                                <span className="text-slate-400 font-bold uppercase text-[8px]">Bio</span>
-                                <span className="text-[12px] font-bold text-slate-900 leading-none">{formatNumber(data.biosolar)}</span>
-                              </div>
-                              <div className="flex flex-col">
-                                <span className="text-slate-400 font-bold uppercase text-[8px]">Pert</span>
-                                <span className="text-[12px] font-bold text-slate-900 leading-none">{formatNumber(data.pertalite)}</span>
-                              </div>
-                              <div className="flex flex-col">
-                                <span className="text-slate-400 font-bold uppercase text-[8px]">Dex</span>
-                                <span className="text-[12px] font-bold text-slate-900 leading-none">{formatNumber(data.pertadex)}</span>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex items-center justify-between py-4 border-t border-slate-50 bg-slate-50/30 rounded-xl mt-4 px-6">
-                        <div className="flex flex-col items-center">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-2">Sub-Total Composition</span>
-                          <div className="w-24 h-24 relative">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart>
-                                <Pie 
-                                  data={fuelAggregated} 
-                                  innerRadius={25} 
-                                  outerRadius={38} 
-                                  paddingAngle={2} 
-                                  dataKey="value" 
-                                  isAnimationActive={false}
-                                  stroke="none"
-                                >
-                                  {fuelAggregated.map((entry, index) => <Cell key={index} fill={entry.color} />)}
-                                </Pie>
-                              </PieChart>
-                            </ResponsiveContainer>
+                          ))}
+                        </div>
+                        {/* Compact Total - Above the Sekat */}
+                        <div className="flex items-center justify-center gap-4 bg-slate-50/50 py-2 rounded-xl mt-4">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">TOTAL</span>
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-xl font-black text-indigo-600 tabular-nums">{formatNumber(dashboardStats.grandTotalFuel)}</span>
+                            <span className="text-[9px] text-slate-400 font-black uppercase">LTR</span>
                           </div>
                         </div>
-                        <div className="flex flex-col items-end">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1.5">Total Daily Usage</span>
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="text-2xl font-black text-indigo-600 leading-none tabular-nums">{formatNumber(dashboardStats.grandTotalFuel)}</span>
-                            <span className="text-[10px] text-slate-400 font-bold uppercase">LITER</span>
+                      </div>
+
+                      {/* Sub-total section with 3 donuts - Aligned divider */}
+                      <div className="flex flex-col py-5 border-t border-slate-100 mt-6 bg-slate-50/20 rounded-2xl px-2">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.25em] text-center mb-5">SUB-TOTAL FUEL</span>
+                        <div className="grid grid-cols-3 gap-1">
+                          <div className="flex flex-col items-center">
+                            <div className="w-20 h-20 relative">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Pie data={biosolarSegments} innerRadius={22} outerRadius={34} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                    {biosolarSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
+                                  </Pie>
+                                </PieChart>
+                              </ResponsiveContainer>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <span className="text-[10px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalBiosolar)}</span>
+                                <span className="text-[6px] font-black text-slate-400 mt-0.5">L</span>
+                              </div>
+                            </div>
+                            <span className="text-[8px] font-black text-slate-400 mt-2 uppercase tracking-[0.1em]">BIOSOLAR</span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <div className="w-20 h-20 relative">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Pie data={pertaliteSegments} innerRadius={22} outerRadius={34} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                    {pertaliteSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
+                                  </Pie>
+                                </PieChart>
+                              </ResponsiveContainer>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <span className="text-[10px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertalite)}</span>
+                                <span className="text-[6px] font-black text-slate-400 mt-0.5">L</span>
+                              </div>
+                            </div>
+                            <span className="text-[8px] font-black text-slate-400 mt-2 uppercase tracking-[0.1em]">PERTALITE</span>
+                          </div>
+                          <div className="flex flex-col items-center">
+                            <div className="w-20 h-20 relative">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Pie data={pertadexSegments} innerRadius={22} outerRadius={34} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                    {pertadexSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
+                                  </Pie>
+                                </PieChart>
+                              </ResponsiveContainer>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <span className="text-[10px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertadex)}</span>
+                                <span className="text-[6px] font-black text-slate-400 mt-0.5">L</span>
+                              </div>
+                            </div>
+                            <span className="text-[8px] font-black text-slate-400 mt-2 uppercase tracking-[0.1em]">PERTADEX</span>
                           </div>
                         </div>
                       </div>
@@ -622,9 +668,11 @@ const App: React.FC = () => {
                   </ChartCard>
                 </div>
               </div>
+
+              {/* Sidebar: Activity Log */}
               <div className="xl:col-span-2">
                 <div className="bg-white rounded-3xl shadow-sm border border-slate-100 h-full p-8 flex flex-col">
-                  <SectionHeader title="Daily Activity Log" subtitle="Update operasional detail" icon={<ActivityIcon size={18} />} />
+                  <SectionHeader title="Daily Activity Log" subtitle="Detailed operational updates" icon={<ActivityIcon size={18} />} />
                   <div className="flex-1 space-y-6 overflow-y-auto max-h-[1100px] custom-scrollbar pr-2 mt-4">
                     {activities.length > 0 ? (
                       activities.map((act, i) => (
@@ -650,7 +698,7 @@ const App: React.FC = () => {
                     ) : (
                       <div className="flex flex-col items-center justify-center h-48 opacity-40">
                          <ActivityIcon size={40} className="text-slate-300 mb-2" />
-                         <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Belum ada aktivitas</p>
+                         <p className="text-xs font-bold uppercase tracking-widest text-slate-400">No data available</p>
                       </div>
                     )}
                   </div>
@@ -662,13 +710,13 @@ const App: React.FC = () => {
                <div className="w-32 h-32 bg-slate-100 rounded-full flex items-center justify-center mb-6 border border-slate-200 shadow-inner">
                   <Database size={56} className="text-slate-300" />
                </div>
-               <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Data Belum Tersedia</h2>
+               <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Data Not Found</h2>
                <p className="text-slate-500 font-medium text-center max-w-md mb-8">
-                  Belum ada laporan untuk tanggal <span className="text-indigo-600 font-bold">{formattedSelectedDate}</span>. 
+                  There is no data report for <span className="text-indigo-600 font-bold">{formattedSelectedDate}</span>. 
                </p>
                <button onClick={() => setActiveView('input')} className="flex items-center gap-2 px-8 h-12 bg-indigo-600 text-white rounded-xl shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-black text-sm uppercase tracking-widest active:scale-95">
                   <PenLine size={18} />
-                  <span>Update Data Sekarang</span>
+                  <span>Update Data Now</span>
                </button>
             </div>
           )
@@ -681,8 +729,8 @@ const App: React.FC = () => {
                     <PenLine size={24} />
                   </div>
                   <div>
-                    <h2 className="text-xl font-black text-white">Input Laporan Operasional</h2>
-                    <p className="text-slate-400 text-xs font-medium uppercase tracking-widest">Update data tanggal {formattedSelectedDate}</p>
+                    <h2 className="text-xl font-black text-white">Operational Data Input</h2>
+                    <p className="text-slate-400 text-xs font-medium uppercase tracking-widest">Update data for {formattedSelectedDate}</p>
                   </div>
                 </div>
               </div>
@@ -774,8 +822,8 @@ const App: React.FC = () => {
                                   <div key={idx} className="flex items-center gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-white">
                                     <div className="grid grid-cols-3 gap-2 flex-1">
                                       <input type="text" value={rm.rig_name} onChange={e => updateLocalRigMove(siteName, idx, 'rig_name', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="Rig" />
-                                      <input type="text" value={rm.from_loc} onChange={e => updateLocalRigMove(siteName, idx, 'from_loc', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="Dari" />
-                                      <input type="text" value={rm.to_loc} onChange={e => updateLocalRigMove(siteName, idx, 'to_loc', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="Ke" />
+                                      <input type="text" value={rm.from_loc} onChange={e => updateLocalRigMove(siteName, idx, 'from_loc', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="From" />
+                                      <input type="text" value={rm.to_loc} onChange={e => updateLocalRigMove(siteName, idx, 'to_loc', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="To" />
                                     </div>
                                     <button onClick={() => deleteLocalRigMove(siteName, idx)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
                                       <Trash2 size={14} />
@@ -783,7 +831,7 @@ const App: React.FC = () => {
                                   </div>
                                 ))}
                                 <button onClick={() => addLocalRigMove(siteName)} className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-[10px] font-bold text-slate-400 hover:bg-slate-100 hover:text-indigo-600 transition-all">
-                                  <Plus size={14} /> Tambah Rig Move
+                                  <Plus size={14} /> Add Rig Move
                                 </button>
                               </div>
                             </td>
@@ -794,18 +842,18 @@ const App: React.FC = () => {
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                       <ActivityIcon size={14} className="text-slate-400" />
-                                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Daftar Aktivitas - {siteName}</span>
+                                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Activity List - {siteName}</span>
                                     </div>
                                     <button onClick={() => addLocalActivity(siteName)} className="flex items-center gap-1.5 px-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm">
-                                      <Plus size={12} /> Tambah Aktivitas
+                                      <Plus size={12} /> Add Activity
                                     </button>
                                   </div>
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {a.items.map((item, idx) => (
                                       <div key={idx} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col gap-3 relative group/log">
                                         <button onClick={() => deleteLocalActivity(siteName, idx)} className="absolute top-2 right-2 p-1.5 text-slate-200 hover:text-rose-500 transition-all opacity-0 group-hover/log:opacity-100"><Trash2 size={12} /></button>
-                                        <input type="text" value={item.category} onChange={e => updateLocalActivity(siteName, idx, 'category', e.target.value)} className="px-2 py-1 bg-slate-50 border-none rounded text-[9px] font-black text-indigo-600 outline-none w-fit uppercase" placeholder="KATEGORI" />
-                                        <textarea value={item.description} onChange={e => updateLocalActivity(siteName, idx, 'description', e.target.value)} rows={2} className="w-full px-3 py-2 bg-slate-50 border-none rounded-lg text-sm font-medium text-slate-600 outline-none resize-none focus:bg-white transition-all" placeholder="Tulis rincian aktivitas di sini..." />
+                                        <input type="text" value={item.category} onChange={e => updateLocalActivity(siteName, idx, 'category', e.target.value)} className="px-2 py-1 bg-slate-50 border-none rounded text-[9px] font-black text-indigo-600 outline-none w-fit uppercase" placeholder="CATEGORY" />
+                                        <textarea value={item.description} onChange={e => updateLocalActivity(siteName, idx, 'description', e.target.value)} rows={2} className="w-full px-3 py-2 bg-slate-50 border-none rounded-lg text-sm font-medium text-slate-600 outline-none resize-none focus:bg-white transition-all" placeholder="Enter activity details..." />
                                       </div>
                                     ))}
                                   </div>
