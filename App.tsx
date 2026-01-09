@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   ResponsiveContainer, 
-  PieChart, Pie, Cell
+  PieChart, Pie, Cell, Tooltip
 } from 'recharts';
 import { 
   LayoutDashboard, 
@@ -52,7 +52,7 @@ const SectionHeader: React.FC<{ title: string; subtitle?: string; icon: React.Re
       {icon}
     </div>
     <div className="flex flex-col justify-center">
-      <h2 className="text-base font-semibold text-slate-900 leading-tight m-0 p-0">{title}</h2>
+      <h2 className="text-base font-bold text-slate-900 leading-tight m-0 p-0">{title}</h2>
       {subtitle && <p className="text-[10px] text-slate-500 mt-0.5 font-medium m-0 p-0">{subtitle}</p>}
     </div>
   </div>
@@ -300,66 +300,47 @@ const App: React.FC = () => {
     setProgress('Mempersiapkan Layout Laporan (Mohon Tunggu)...');
     
     try {
-      // 1. Scroll container ke atas sebelum proses capture dimulai
       const mainElement = dashboardRef.current.parentElement;
       if (mainElement) mainElement.scrollTop = 0;
       
-      // Delay sedikit agar rendering browser stabil
       await new Promise(r => setTimeout(r, 1500));
 
       const element = dashboardRef.current;
       
-      // 2. Gunakan html2canvas dengan opsi pembersihan DOM klon
       const canvas = await html2canvas(element, {
-        scale: 2, // Skala 2x untuk kualitas cetak tajam
+        scale: 2, 
         useCORS: true,
         backgroundColor: '#f8fafc',
         height: element.scrollHeight,
         width: element.offsetWidth,
-        windowWidth: 1600, // Paksa lebar tetap agar layout tidak responsif/berantakan
+        windowWidth: 1440, 
         windowHeight: element.scrollHeight,
         logging: false,
-        imageTimeout: 0,
         onclone: (clonedDoc) => {
-          // Cari container dashboard di dalam dokumen klon
           const clonedElement = clonedDoc.body.querySelector('[ref="dashboardRef"]') || 
                                 clonedDoc.body.querySelector('.p-4.lg\\:p-10');
           
           if (clonedElement) {
             const el = clonedElement as HTMLElement;
-            el.style.width = '1600px'; // Set lebar tetap untuk PDF
+            el.style.width = '1440px'; 
             el.style.height = 'auto';
             el.style.overflow = 'visible';
-            el.style.padding = '40px'; // Padding standar untuk margin PDF
+            el.style.padding = '30px'; 
             
-            // Hapus properti yang menyebabkan pergeseran teks atau cropping
-            const allElements = clonedDoc.querySelectorAll('*');
-            allElements.forEach((node: any) => {
-              // Nonaktifkan semua animasi dan transisi
+            const allText = clonedDoc.querySelectorAll('p, span, h1, h2, h3, h4, div');
+            allText.forEach((node: any) => {
+              node.style.lineHeight = '1.4';
               node.style.transition = 'none';
               node.style.animation = 'none';
-              node.style.transform = 'none';
-              
-              // Perbaiki masalah line-height yang menyebabkan teks terpotong bawahnya
-              if (node.tagName === 'SPAN' || node.tagName === 'P' || node.tagName === 'H3' || node.tagName === 'H1') {
-                const style = window.getComputedStyle(node);
-                if (style.lineHeight === 'normal' || parseFloat(style.lineHeight) < 1.2) {
-                  node.style.lineHeight = '1.4';
-                }
-                node.style.textRendering = 'optimizeLegibility';
-              }
             });
 
-            // Pastikan semua area scrollable menjadi terlihat sepenuhnya
-            const scrollables = clonedDoc.querySelectorAll('.overflow-y-auto, .overflow-x-auto, .custom-scrollbar');
+            const scrollables = clonedDoc.querySelectorAll('.overflow-y-auto, .custom-scrollbar');
             scrollables.forEach((s: any) => {
               s.style.overflow = 'visible';
               s.style.height = 'auto';
               s.style.maxHeight = 'none';
-              s.style.width = 'auto';
             });
 
-            // Perbaiki elemen sticky agar posisinya tetap benar di PDF
             const stickies = clonedDoc.querySelectorAll('.sticky');
             stickies.forEach((s: any) => {
               s.style.position = 'relative';
@@ -373,24 +354,22 @@ const App: React.FC = () => {
       setProgress('Membangun Berkas PDF...');
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
-      
-      // Konversi kanvas ke data gambar JPEG (kualitas tinggi)
-      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const imgData = canvas.toDataURL('image/jpeg', 1.0);
       
       const pdf = new jsPDF({
         orientation: 'landscape',
         unit: 'px',
         format: [imgWidth, imgHeight],
-        hotfixes: ['px_pt'] // Perbaikan kalkulasi unit piksel
+        hotfixes: ['px_pt']
       });
 
       pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight, undefined, 'FAST');
-      pdf.save(`Zona9_Dashboard_Report_${selectedDate}.pdf`);
+      pdf.save(`Zona9_Laporan_Harian_${selectedDate}.pdf`);
       
       showToast('PDF Berhasil Diunduh!');
     } catch (e) {
       console.error('Export Error:', e);
-      showToast('Gagal mengunduh PDF, silakan coba lagi.', true);
+      showToast('Gagal mengunduh PDF', true);
     } finally {
       setIsDownloading(false);
       setProgress('');
@@ -438,23 +417,23 @@ const App: React.FC = () => {
   })).filter(d => d.value > 0), [sites, fuelData]);
 
   return (
-    <div className="min-h-screen flex bg-slate-50/50 overflow-hidden font-inter">
+    <div className="min-h-screen flex bg-slate-50 overflow-hidden font-inter text-slate-900">
       {(error || successMsg) && (
-        <div className={`fixed top-6 right-6 z-[9999] flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border animate-in slide-in-from-right duration-300 ${error ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-emerald-50 border-emerald-200 text-emerald-600'}`}>
+        <div className={`fixed top-6 right-6 z-[9999] flex items-center gap-3 px-6 py-4 rounded-xl shadow-lg border animate-in slide-in-from-right duration-300 ${error ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-emerald-50 border-emerald-200 text-emerald-600'}`}>
           {error ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
           <span className="font-bold text-sm">{error || successMsg}</span>
         </div>
       )}
 
       {isDownloading && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-md flex flex-col items-center justify-center text-white">
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-md flex flex-col items-center justify-center text-white p-6">
           <Loader2 className="w-16 h-16 text-indigo-400 animate-spin mb-6" />
           <h2 className="text-2xl font-black mb-2 tracking-tight">Mengekspor Laporan</h2>
-          <p className="text-slate-300 font-medium text-center px-6">{progress}</p>
+          <p className="text-slate-300 font-medium text-center">{progress}</p>
         </div>
       )}
 
-      <aside className="hidden lg:flex flex-col w-24 bg-slate-900 text-slate-400 h-screen sticky top-0 no-print">
+      <aside className="hidden lg:flex flex-col w-24 bg-slate-900 text-slate-400 h-screen sticky top-0 no-print z-50">
         <div className="py-8 flex flex-col items-center">
           <div className="w-12 h-12 bg-indigo-500 rounded-2xl flex items-center justify-center mb-10 shadow-lg shadow-indigo-500/20">
             <LayoutDashboard className="text-white" size={24} />
@@ -473,8 +452,8 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-1 overflow-y-auto h-screen scroll-smooth">
-        <div className="p-4 lg:p-10 min-h-full" ref={dashboardRef}>
-          <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 relative z-50">
+        <div className="p-4 lg:p-10 min-h-full max-w-[1600px] mx-auto" ref={dashboardRef}>
+          <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 relative z-10">
             <div>
               <h1 className="text-3xl font-black text-slate-900 tracking-tight">Warehouse Operation Zona 9 Dashboard</h1>
               <div className="flex items-center gap-4 mt-1.5">
@@ -502,7 +481,7 @@ const App: React.FC = () => {
               ) : (
                 <button onClick={handleBulkSave} disabled={isSaving} className="flex items-center justify-center gap-2 px-8 h-11 bg-indigo-600 text-white rounded-xl shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-black text-sm uppercase tracking-widest">
                   {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                  <span>Simpan Database</span>
+                  <span>Simpan Data</span>
                 </button>
               )}
             </div>
@@ -515,7 +494,7 @@ const App: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <StatCard title="Total Good Issue" value={formatCurrency(dashboardStats.totalGoodIssue)} icon={<ArrowUpRight size={24} className="text-emerald-500" />} trend="-1.8%" trendClassName="bg-emerald-50 text-emerald-600" />
                     <StatCard title="Total Good Receive" value={formatCurrency(dashboardStats.totalGoodReceive)} icon={<ArrowDownLeft size={24} className="text-rose-500" />} trend="+0.5%" trendClassName="bg-rose-50 text-rose-600" />
-                    <StatCard title="Total Stock Value" value={formatCurrency(dashboardStats.totalStockValue)} icon={<Package size={24} className="text-slate-600" />} trend="+2.4%" trendClassName="bg-rose-50 text-rose-600" />
+                    <StatCard title="Total Stock Value" value={formatCurrency(dashboardStats.totalStockValue)} icon={<Package size={24} className="text-slate-600" />} trend="+2.4%" trendClassName="bg-indigo-50 text-indigo-600" />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <ChartCard title="Good Issue & Receive" subtitle="All Field Zona 9" icon={<ArrowLeftRight size={18} />}>
@@ -525,15 +504,15 @@ const App: React.FC = () => {
                           <span className="w-[30%] text-center">Good Issue</span>
                           <span className="w-[30%] text-center">Good Receive</span>
                         </div>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1 pr-1">
                           {sites.filter(s => s.name !== 'ZONA 9').map((site, index) => (
                             <div key={index} className="flex items-center px-2 py-3 hover:bg-slate-50 rounded-xl border-b border-slate-50 last:border-0 transition-colors">
                               <div className="w-[40%] flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: site.color || '#cbd5e1' }}></span>
                                 <span className="text-xs font-bold text-slate-700 truncate">{site.name}</span>
                               </div>
-                              <div className="w-[30%] text-center font-semibold text-emerald-600 text-xs tabular-nums">{site.issued > 0 ? formatCurrency(site.issued) : '-'}</div>
-                              <div className="w-[30%] text-center font-semibold text-rose-600 text-xs tabular-nums">{site.received > 0 ? formatCurrency(site.received) : '-'}</div>
+                              <div className="w-[30%] text-center font-bold text-emerald-600 text-xs tabular-nums">{site.issued > 0 ? formatCurrency(site.issued) : '-'}</div>
+                              <div className="w-[30%] text-center font-bold text-rose-600 text-xs tabular-nums">{site.received > 0 ? formatCurrency(site.received) : '-'}</div>
                             </div>
                           ))}
                         </div>
@@ -541,7 +520,7 @@ const App: React.FC = () => {
                     </ChartCard>
                     <ChartCard title="Stock Value" subtitle="All Field Zona 9" icon={<TrendingUp size={18} />}>
                       <div className="flex flex-col h-full gap-4">
-                        <div className="w-full h-[180px]">
+                        <div className="w-full h-[180px] relative">
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie 
@@ -551,16 +530,17 @@ const App: React.FC = () => {
                                 paddingAngle={4} 
                                 dataKey="stock" 
                                 nameKey="name" 
-                                isAnimationActive={false}
+                                isAnimationActive={true}
                                 labelLine={false}
                                 label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
                               >
                                 {sites.filter(s => s.stock > 0).map((entry, index) => <Cell key={index} fill={entry.color || '#94a3b8'} stroke="none" />)}
                               </Pie>
+                              <Tooltip formatter={(value: number) => formatCurrency(value)} />
                             </PieChart>
                           </ResponsiveContainer>
                         </div>
-                        <div className="w-full space-y-3 pt-2">
+                        <div className="w-full space-y-2 pt-2">
                           {sites.filter(s => s.stock > 0).map((site, index) => (
                             <div key={index} className="flex items-center justify-between border-b border-slate-50 pb-2 last:border-0">
                               <div className="flex items-center gap-2">
@@ -575,10 +555,9 @@ const App: React.FC = () => {
                     </ChartCard>
                   </div>
                   
-                  {/* Lower Row: POB, Rig Move, and Fuel Consumption aligned horizontally */}
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-                    <ChartCard title="Person on Board" icon={<Users size={18} />} className="md:col-span-1">
-                      <div className="h-[210px] flex flex-col space-y-3 pr-1">
+                    <ChartCard title="POB Status" icon={<Users size={18} />} className="md:col-span-1">
+                      <div className="h-[210px] flex flex-col space-y-3 pr-1 overflow-y-auto custom-scrollbar">
                         {sites.map((site) => (
                           <div key={site.name} className="flex flex-col">
                             <div className="flex items-center gap-2 mb-0.5">
@@ -613,7 +592,7 @@ const App: React.FC = () => {
                             <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0 mb-2">
                               <div className="flex items-center gap-2 mb-1">
                                 <div className="w-1.5 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: sites.find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div>
-                                <span className="text-[10px] font-black text-slate-700 uppercase tracking-tight truncate">
+                                <span className="text-[10px] font-bold text-slate-700 uppercase tracking-tight truncate">
                                   {rm.site} - {rm.rig_name}
                                 </span>
                               </div>
@@ -663,42 +642,42 @@ const App: React.FC = () => {
 
                     <ChartCard title="Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-2">
                       <div className="flex flex-col h-full">
-                        <div className="h-[210px] flex flex-col justify-between">
+                        <div className="h-[210px] flex flex-col justify-between overflow-y-auto custom-scrollbar pr-1">
                           <div className="grid grid-cols-2 gap-x-8 gap-y-4 px-1 w-full">
                             {fuelData.map((data) => (
                               <div key={data.name} className="flex flex-col">
                                 <div className="flex items-center gap-2 mb-1">
                                   <div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: sites.find(s => s.name === data.name)?.color || '#94a3b8' }}></div>
-                                  <span className="text-[11px] font-black text-slate-500 uppercase tracking-tight truncate">{data.name}</span>
+                                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-tight truncate">{data.name}</span>
                                 </div>
-                                <div className="flex gap-6 ml-3.5 tabular-nums">
+                                <div className="flex gap-4 ml-3.5 tabular-nums">
                                   <div className="flex flex-col">
-                                    <span className="text-slate-300 font-black uppercase text-[8px] mb-0.5">BIO</span>
-                                    <span className="text-xs font-black text-slate-900 leading-none">{formatNumber(data.biosolar)}</span>
+                                    <span className="text-slate-300 font-bold uppercase text-[8px] mb-0.5">BIO</span>
+                                    <span className="text-xs font-bold text-slate-900 leading-none">{formatNumber(data.biosolar)}</span>
                                   </div>
                                   <div className="flex flex-col">
-                                    <span className="text-slate-300 font-black uppercase text-[8px] mb-0.5">PERT</span>
-                                    <span className="text-xs font-black text-slate-900 leading-none">{formatNumber(data.pertalite)}</span>
+                                    <span className="text-slate-300 font-bold uppercase text-[8px] mb-0.5">PERT</span>
+                                    <span className="text-xs font-bold text-slate-900 leading-none">{formatNumber(data.pertalite)}</span>
                                   </div>
                                   <div className="flex flex-col">
-                                    <span className="text-slate-300 font-black uppercase text-[8px] mb-0.5">DEX</span>
-                                    <span className="text-xs font-black text-slate-900 leading-none">{formatNumber(data.pertadex)}</span>
+                                    <span className="text-slate-300 font-bold uppercase text-[8px] mb-0.5">DEX</span>
+                                    <span className="text-xs font-bold text-slate-900 leading-none">{formatNumber(data.pertadex)}</span>
                                   </div>
                                 </div>
                               </div>
                             ))}
                           </div>
-                          <div className="flex items-center justify-center gap-4 bg-slate-50/50 py-2 rounded-xl mt-4">
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">TOTAL</span>
+                          <div className="flex items-center justify-center gap-4 bg-slate-50 py-2 rounded-xl mt-4">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">TOTAL</span>
                             <div className="flex items-baseline gap-1.5">
                               <span className="text-xl font-black text-indigo-600 tabular-nums">{formatNumber(dashboardStats.grandTotalFuel)}</span>
-                              <span className="text-[9px] text-slate-400 font-black uppercase">LTR</span>
+                              <span className="text-[9px] text-slate-400 font-bold uppercase">LTR</span>
                             </div>
                           </div>
                         </div>
 
-                        <div className="flex flex-col py-5 border-t border-slate-100 mt-6 bg-slate-50/20 rounded-2xl px-2">
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.25em] text-center mb-5">SUB-TOTAL FUEL</span>
+                        <div className="flex flex-col py-5 border-t border-slate-100 mt-6 px-2">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center mb-5">SUB-TOTAL FUEL</span>
                           <div className="grid grid-cols-3 gap-1">
                             <div className="flex flex-col items-center">
                               <div className="w-20 h-20 relative">
@@ -710,11 +689,11 @@ const App: React.FC = () => {
                                   </PieChart>
                                 </ResponsiveContainer>
                                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                  <span className="text-[10px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalBiosolar)}</span>
-                                  <span className="text-[6px] font-black text-slate-400 mt-0.5">L</span>
+                                  <span className="text-[10px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalBiosolar)}</span>
+                                  <span className="text-[6px] font-bold text-slate-400 mt-0.5">L</span>
                                 </div>
                               </div>
-                              <span className="text-[8px] font-black text-slate-400 mt-2 uppercase tracking-[0.1em]">BIOSOLAR</span>
+                              <span className="text-[8px] font-bold text-slate-400 mt-2 uppercase">BIOSOLAR</span>
                             </div>
                             <div className="flex flex-col items-center">
                               <div className="w-20 h-20 relative">
@@ -726,11 +705,11 @@ const App: React.FC = () => {
                                   </PieChart>
                                 </ResponsiveContainer>
                                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                  <span className="text-[10px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertalite)}</span>
-                                  <span className="text-[6px] font-black text-slate-400 mt-0.5">L</span>
+                                  <span className="text-[10px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertalite)}</span>
+                                  <span className="text-[6px] font-bold text-slate-400 mt-0.5">L</span>
                                 </div>
                               </div>
-                              <span className="text-[8px] font-black text-slate-400 mt-2 uppercase tracking-[0.1em]">PERTALITE</span>
+                              <span className="text-[8px] font-bold text-slate-400 mt-2 uppercase">PERTALITE</span>
                             </div>
                             <div className="flex flex-col items-center">
                               <div className="w-20 h-20 relative">
@@ -742,11 +721,11 @@ const App: React.FC = () => {
                                   </PieChart>
                                 </ResponsiveContainer>
                                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                  <span className="text-[10px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertadex)}</span>
-                                  <span className="text-[6px] font-black text-slate-400 mt-0.5">L</span>
+                                  <span className="text-[10px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertadex)}</span>
+                                  <span className="text-[6px] font-bold text-slate-400 mt-0.5">L</span>
                                 </div>
                               </div>
-                              <span className="text-[8px] font-black text-slate-400 mt-2 uppercase tracking-[0.1em]">PERTADEX</span>
+                              <span className="text-[8px] font-bold text-slate-400 mt-2 uppercase">PERTADEX</span>
                             </div>
                           </div>
                         </div>
@@ -755,9 +734,8 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Sidebar: Activity Log */}
                 <div className="xl:col-span-2">
-                  <div className="bg-white rounded-3xl shadow-sm border border-slate-100 h-full p-8 flex flex-col">
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-100 h-full p-8 flex flex-col">
                     <SectionHeader title="Daily Activity Log" subtitle="Detailed operational updates" icon={<ActivityIcon size={18} />} />
                     <div className="flex-1 space-y-6 overflow-y-auto max-h-[1100px] custom-scrollbar pr-2 mt-4">
                       {activities.length > 0 ? (
@@ -770,8 +748,8 @@ const App: React.FC = () => {
                             </div>
                             <div className="space-y-3 px-1">
                               {act.items.map((item, j) => (
-                                <div key={j} className="relative pl-5 py-1">
-                                  <div className="absolute left-0 top-[12px] w-1.5 h-1.5 rounded-full bg-slate-200"></div>
+                                <div key={j} className="relative pl-5 py-1 group">
+                                  <div className="absolute left-0 top-[12px] w-1.5 h-1.5 rounded-full bg-slate-200 group-hover:bg-indigo-500 transition-colors"></div>
                                   <div className="flex flex-col">
                                     <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-0.5">{item.category}</span>
                                     <p className="text-sm text-slate-600 leading-relaxed font-medium">{item.description}</p>
@@ -793,30 +771,28 @@ const App: React.FC = () => {
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in zoom-in duration-500">
-                 <div className="w-32 h-32 bg-slate-100 rounded-full flex items-center justify-center mb-6 border border-slate-200 shadow-inner">
-                    <Database size={56} className="text-slate-300" />
-                 </div>
-                 <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Data Not Found</h2>
+                 <Database size={56} className="text-slate-200 mb-6" />
+                 <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Data Tidak Ditemukan</h2>
                  <p className="text-slate-500 font-medium text-center max-w-md mb-8">
-                    There is no data report for <span className="text-indigo-600 font-bold">{formattedSelectedDate}</span>. 
+                    Tidak ada laporan operasional untuk tanggal <span className="text-indigo-600 font-bold">{formattedSelectedDate}</span>. 
                  </p>
-                 <button onClick={() => setActiveView('input')} className="flex items-center gap-2 px-8 h-12 bg-indigo-600 text-white rounded-xl shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-black text-sm uppercase tracking-widest active:scale-95">
+                 <button onClick={() => setActiveView('input')} className="flex items-center gap-2 px-8 h-12 bg-indigo-600 text-white rounded-xl shadow-xl hover:bg-indigo-700 transition-all font-bold text-sm uppercase active:scale-95">
                     <PenLine size={18} />
-                    <span>Update Data Now</span>
+                    <span>Update Data</span>
                  </button>
               </div>
             )
           ) : (
             <div className="animate-in slide-in-from-bottom-4 duration-500">
-              <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-10">
-                <div className="bg-slate-900 p-6 flex items-center justify-between gap-4">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-10">
+                <div className="bg-slate-900 p-8 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400">
+                    <div className="p-3 bg-indigo-500/20 rounded-xl text-indigo-400">
                       <PenLine size={24} />
                     </div>
                     <div>
-                      <h2 className="text-xl font-black text-white">Operational Data Input</h2>
-                      <p className="text-slate-400 text-xs font-medium uppercase tracking-widest">Update data for {formattedSelectedDate}</p>
+                      <h2 className="text-xl font-black text-white">Input Data Operasional</h2>
+                      <p className="text-slate-400 text-xs font-medium uppercase tracking-widest">Update data untuk {formattedSelectedDate}</p>
                     </div>
                   </div>
                 </div>
@@ -862,14 +838,14 @@ const App: React.FC = () => {
                                   </div>
                                   <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
-                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Daily Issue</label>
+                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Good Issue</label>
                                       <input type="text" value={s.issued === 0 ? '0' : formatNumber(s.issued)} onChange={e => {
                                           const raw = e.target.value.replace(/\D/g, '');
                                           updateLocalSite(siteName, 'issued', raw === '' ? 0 : Number(raw));
                                         }} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-emerald-600 outline-none text-sm" />
                                     </div>
                                     <div className="space-y-1">
-                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Daily Receive</label>
+                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Good Receive</label>
                                       <input type="text" value={s.received === 0 ? '0' : formatNumber(s.received)} onChange={e => {
                                           const raw = e.target.value.replace(/\D/g, '');
                                           updateLocalSite(siteName, 'received', raw === '' ? 0 : Number(raw));
@@ -924,11 +900,11 @@ const App: React.FC = () => {
                             </tr>
                             <tr className="border-b border-slate-100">
                               <td colSpan={5} className="p-0">
-                                  <div className="bg-slate-50/50 p-6 flex flex-col gap-4">
+                                  <div className="bg-slate-50/30 p-6 flex flex-col gap-4">
                                     <div className="flex items-center justify-between">
                                       <div className="flex items-center gap-2">
                                         <ActivityIcon size={14} className="text-slate-400" />
-                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Activity List - {siteName}</span>
+                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Activity Log - {siteName}</span>
                                       </div>
                                       <button onClick={() => addLocalActivity(siteName)} className="flex items-center gap-1.5 px-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm">
                                         <Plus size={12} /> Add Activity
@@ -939,7 +915,7 @@ const App: React.FC = () => {
                                         <div key={idx} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col gap-3 relative group/log">
                                           <button onClick={() => deleteLocalActivity(siteName, idx)} className="absolute top-2 right-2 p-1.5 text-slate-200 hover:text-rose-500 transition-all opacity-0 group-hover/log:opacity-100"><Trash2 size={12} /></button>
                                           <input type="text" value={item.category} onChange={e => updateLocalActivity(siteName, idx, 'category', e.target.value)} className="px-2 py-1 bg-slate-50 border-none rounded text-[9px] font-black text-indigo-600 outline-none w-fit uppercase" placeholder="CATEGORY" />
-                                          <textarea value={item.description} onChange={e => updateLocalActivity(siteName, idx, 'description', e.target.value)} rows={2} className="w-full px-3 py-2 bg-slate-50 border-none rounded-lg text-sm font-medium text-slate-600 outline-none resize-none focus:bg-white transition-all" placeholder="Enter activity details..." />
+                                          <textarea value={item.description} onChange={e => updateLocalActivity(siteName, idx, 'description', e.target.value)} rows={2} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 outline-none resize-none focus:bg-white transition-all" placeholder="Enter activity details..." />
                                         </div>
                                       ))}
                                     </div>
@@ -960,15 +936,14 @@ const App: React.FC = () => {
       
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
         @media print { .no-print { display: none !important; } }
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; }
-        
         input[type="date"]::-webkit-calendar-picker-indicator {
           cursor: pointer;
-          padding: 2px;
         }
       `}</style>
     </div>
