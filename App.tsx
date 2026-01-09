@@ -26,7 +26,6 @@ import {
   MoveRight,
   CalendarRange,
   Edit3,
-  Image as ImageIcon,
   Server,
   Download
 } from 'lucide-react';
@@ -93,8 +92,7 @@ const AutoResizeTextarea = ({ value, onChange, placeholder, className, readOnly 
   const adjustHeight = () => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      // Buffer to prevent tiny scroll jitter
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight + 4}px`;
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight + 5}px`;
     }
   };
 
@@ -103,8 +101,7 @@ const AutoResizeTextarea = ({ value, onChange, placeholder, className, readOnly 
   }, [value]);
 
   useEffect(() => {
-    // Initial adjust with a small delay for layout stabilization
-    const timer = setTimeout(adjustHeight, 200);
+    const timer = setTimeout(adjustHeight, 300);
     return () => clearTimeout(timer);
   }, []);
 
@@ -203,12 +200,13 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingWeeklyUpdates, setIsSavingWeeklyUpdates] = useState(false);
+  const [isSavingDailyUpdates, setIsSavingDailyUpdates] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
   const dashboardRef = useRef<HTMLDivElement>(null);
 
-  const [activeInputTab, setActiveInputTab] = useState<'sites' | 'fuel' | 'activities' | 'rigmoves'>('sites');
+  const [activeInputTab, setActiveInputTab] = useState<'sites' | 'fuel' | 'rigmoves'>('sites');
   
   const [sites, setSites] = useState<SiteData[]>([]);
   const [fuelData, setFuelData] = useState<FuelData[]>([]);
@@ -226,10 +224,13 @@ const App: React.FC = () => {
     'PHSS': '', 'SANGASANGA': '', 'SANGATTA': '', 'TANJUNG': '', 'ZONA 9': ''
   });
 
+  const [dailyUpdates, setDailyUpdates] = useState<Record<string, string>>({
+    'PHSS': '', 'SANGASANGA': '', 'SANGATTA': '', 'TANJUNG': '', 'ZONA 9': ''
+  });
+
   const [prevDaySites, setPrevDaySites] = useState<SiteData[]>([]);
   const [localSites, setLocalSites] = useState<SiteData[]>([]);
   const [localFuel, setLocalFuel] = useState<FuelData[]>([]);
-  const [localActs, setLocalActs] = useState<Activity[]>([]);
   const [localRigMoves, setLocalRigMoves] = useState<RigMove[]>([]);
 
   const fetchData = async (date: string) => {
@@ -241,10 +242,11 @@ const App: React.FC = () => {
       d.setDate(d.getDate() - 1);
       const prevDateStr = d.toISOString().split('T')[0];
 
+      // Ambil activities dari tanggal khusus 8888-12-31 (Persisten Daily Log)
       const [sRes, fRes, aRes, rRes, prevSRes] = await Promise.all([
         supabase.from('sites').select('*').eq('date', date).order('name'),
         supabase.from('fuel_data').select('*').eq('date', date).order('name'),
-        supabase.from('activities').select('*').eq('date', date).order('site'),
+        supabase.from('activities').select('*').eq('date', '8888-12-31').order('site'),
         supabase.from('rig_moves').select('*').eq('date', date).order('site'),
         supabase.from('sites').select('*').eq('date', prevDateStr)
       ]);
@@ -272,13 +274,17 @@ const App: React.FC = () => {
         setLocalFuel(initialFuelData.map(f => ({ ...f, biosolar: 0, pertalite: 0, pertadex: 0 })));
       }
 
+      // Handle Daily Activities secara persisten
       if (aRes.data && aRes.data.length > 0) {
         setActivities(aRes.data);
-        setLocalActs(JSON.parse(JSON.stringify(aRes.data)));
+        const updates: Record<string, string> = { 'PHSS': '', 'SANGASANGA': '', 'SANGATTA': '', 'TANJUNG': '', 'ZONA 9': '' };
+        aRes.data.forEach(act => {
+          updates[act.site] = act.items?.[0]?.description || '';
+        });
+        setDailyUpdates(updates);
       } else {
-        const siteNames = ['PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG', 'ZONA 9'];
         setActivities([]);
-        setLocalActs(siteNames.map(name => ({ site: name, items: [] })));
+        setDailyUpdates({ 'PHSS': '', 'SANGASANGA': '', 'SANGATTA': '', 'TANJUNG': '', 'ZONA 9': '' });
       }
 
       if (rRes.data && rRes.data.length > 0) {
@@ -351,6 +357,61 @@ const App: React.FC = () => {
     }
   };
 
+  const handleSaveDailyUpdates = async () => {
+    setIsSavingDailyUpdates(true);
+    try {
+      // Simpan ke tanggal persisten 8888-12-31
+      const updates = Object.entries(dailyUpdates).map(([site, text]) => ({
+        site, date: '8888-12-31',
+        items: [{ category: 'Daily Log', description: text }]
+      }));
+      const { error } = await supabase.from('activities').upsert(updates, { onConflict: 'site,date' });
+      if (error) throw error;
+      showToast('Daily Notes berhasil disimpan!');
+      // Refresh local state agar sinkron
+      const updatedActs = updates.map(u => ({ site: u.site, items: u.items, date: u.date }));
+      setActivities(updatedActs as any);
+    } catch (err: any) {
+      showToast('Error: ' + err.message, true);
+    } finally {
+      setIsSavingDailyUpdates(false);
+    }
+  };
+
+  const handleServerDownload = async () => {
+    setIsDownloading(true);
+    setProgress('Menghubungkan ke server render...');
+    try {
+      const host = window.location.origin;
+      const params = new URLSearchParams({
+        date: selectedDate,
+        view: activeView,
+        startDate: startDate,
+        endDate: endDate,
+        host: host
+      });
+      setProgress('Sedang merender dashboard HD (ini mungkin butuh 10-20 detik)...');
+      const response = await fetch(`/api/screenshot?${params.toString()}`);
+      if (!response.ok) throw new Error('Gagal mengunduh laporan dari server.');
+      setProgress('Menyiapkan file unduhan...');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Zona9_Report_${activeView}_${selectedDate}.png`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showToast('Laporan berhasil diunduh!');
+    } catch (err: any) {
+      showToast('Export Error: ' + err.message, true);
+    } finally {
+      setIsDownloading(false);
+      setProgress('');
+    }
+  };
+
   useEffect(() => {
     fetchPersistentWeeklyUpdates();
   }, []);
@@ -372,8 +433,6 @@ const App: React.FC = () => {
       await supabase.from('sites').upsert(siteUpdates, { onConflict: 'name,date' });
       const fuelUpdates = localFuel.map(f => ({ ...f, date: selectedDate }));
       await supabase.from('fuel_data').upsert(fuelUpdates, { onConflict: 'name,date' });
-      const actUpdates = localActs.map(a => ({ ...a, date: selectedDate }));
-      await supabase.from('activities').upsert(actUpdates, { onConflict: 'site,date' });
       await supabase.from('rig_moves').delete().eq('date', selectedDate);
       if (localRigMoves.length > 0) {
         await supabase.from('rig_moves').insert(localRigMoves.map(rm => ({ ...rm, date: selectedDate })));
@@ -387,39 +446,13 @@ const App: React.FC = () => {
     }
   };
 
-  const handleServerDownload = async () => {
-    setIsDownloading(true);
-    setProgress('Server sedang merender laporan HD...');
-    try {
-      const host = window.location.origin;
-      const queryParams = new URLSearchParams({ date: selectedDate, view: activeView, startDate: startDate, endDate: endDate, host });
-      const response = await fetch(`/api/screenshot?${queryParams.toString()}`);
-      if (!response.ok) throw new Error('Gagal render server');
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `Zona9_Report_${selectedDate}.png`;
-      link.click();
-      showToast('Laporan HD Berhasil Diunduh!');
-    } catch (e: any) { showToast(e.message, true); } finally { setIsDownloading(false); setProgress(''); }
-  };
-
   const updateLocalSite = (name: string, field: keyof SiteData, value: any) => {
     setLocalSites(prev => prev.map(s => s.name === name ? { ...s, [field]: value } : s));
   };
   const updateLocalFuel = (name: string, field: keyof FuelData, value: any) => {
     setLocalFuel(prev => prev.map(f => f.name === name ? { ...f, [field]: value } : f));
   };
-  const addLocalActivityItem = (site: string) => {
-    setLocalActs(prev => prev.map(a => a.site === site ? { ...a, items: [...a.items, { category: 'Warehouse', description: '' }] } : a));
-  };
-  const updateLocalActivityItem = (site: string, index: number, field: 'category' | 'description', value: string) => {
-    setLocalActs(prev => prev.map(a => a.site === site ? { ...a, items: a.items.map((item, i) => i === index ? { ...item, [field]: value } : item) } : a));
-  };
-  const removeLocalActivityItem = (site: string, index: number) => {
-    setLocalActs(prev => prev.map(a => a.site === site ? { ...a, items: a.items.filter((_, i) => i !== index) } : a));
-  };
+
   const addLocalRigMove = () => {
     setLocalRigMoves(prev => [...prev, { site: 'PHSS', rig_name: '', from_loc: '', to_loc: '' }]);
   };
@@ -487,9 +520,19 @@ const App: React.FC = () => {
     if (weeklySites.length === 0) return null;
     const totalIssue = weeklySites.reduce((acc, curr) => acc + (curr.issued || 0), 0);
     const totalReceive = weeklySites.reduce((acc, curr) => acc + (curr.received || 0), 0);
+    
     const lastDayStock = weeklyLastDaySites.reduce((acc, curr) => acc + curr.stock, 0);
     const firstDayStock = weeklyFirstDaySites.reduce((acc, curr) => acc + curr.stock, 0);
     
+    const calcTrend = (curr: number, prev: number) => {
+      if (prev === 0) return '+0.00%';
+      const diff = ((curr - prev) / prev) * 100;
+      return `${diff >= 0 ? '+' : ''}${diff.toFixed(2)}%`;
+    };
+
+    const stockTrendValue = calcTrend(lastDayStock, firstDayStock);
+    const stockIsPositive = lastDayStock >= firstDayStock;
+
     const fuelAgg: Record<string, any> = {};
     weeklyFuel.forEach(f => {
       if (!fuelAgg[f.name]) fuelAgg[f.name] = { biosolar: 0, pertalite: 0, pertadex: 0 };
@@ -525,19 +568,15 @@ const App: React.FC = () => {
     const pertadexSegments = Object.entries(fuelAgg).map(([name, data]) => ({ name, value: data.pertadex, color: weeklyLastDaySites.find(s => s.name === name)?.color || '#94a3b8' })).filter(d => d.value > 0);
 
     return { 
-      totalIssue, totalReceive, lastDayStock, fuelAgg, siteAgg, 
+      totalIssue, totalReceive, lastDayStock, firstDayStock, stockTrendValue, stockIsPositive, fuelAgg, siteAgg, 
       totalRigMoves: weeklyRigs.length, rigMovesBySite: Object.values(rigMovesBySite),
       grandTotalFuel, totalBiosolar, totalPertalite, totalPertadex,
-      biosolarSegments, pertaliteSegments, pertadexSegments,
-      stockTrendValue: lastDayStock >= firstDayStock ? '+3.50%' : '-1.20%', stockIsPositive: lastDayStock >= firstDayStock 
+      biosolarSegments, pertaliteSegments, pertadexSegments
     };
   }, [weeklySites, weeklyFuel, weeklyRigs, weeklyFirstDaySites, weeklyLastDaySites]);
 
   const formattedSelectedDate = new Date(selectedDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-  const sortedActivities = useMemo(() => {
-    const order = ['ZONA 9', 'PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG'];
-    return [...activities].sort((a, b) => order.indexOf(a.site) - order.indexOf(b.site));
-  }, [activities]);
+  const sortedSiteNames = ['ZONA 9', 'PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG'];
 
   return (
     <div className={`min-h-screen flex bg-slate-50 font-inter text-slate-900 ${isExportMode ? 'export-view' : 'overflow-hidden'}`}>
@@ -614,6 +653,12 @@ const App: React.FC = () => {
             </div>
             {!isExportMode && (
               <div className="flex items-center gap-3 no-print">
+                {activeView === 'dashboard' && (
+                  <button onClick={handleSaveDailyUpdates} disabled={isSavingDailyUpdates} className="flex items-center justify-center gap-2 px-6 h-11 bg-indigo-600 text-white rounded-xl shadow-md hover:bg-indigo-700 transition-all font-bold text-xs uppercase tracking-wider">
+                    {isSavingDailyUpdates ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                    <span>Save Daily Notes</span>
+                  </button>
+                )}
                 {activeView !== 'input' && (
                   <button onClick={handleServerDownload} className="flex items-center gap-2 px-6 h-11 bg-slate-900 text-white rounded-xl shadow-lg hover:bg-slate-800 transition-all font-bold text-xs uppercase tracking-wider">
                     <Download size={16} />
@@ -638,12 +683,10 @@ const App: React.FC = () => {
 
           {activeView === 'input' ? (
             <div className="animate-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto">
-              {/* Input Section Omitted for Brevity - Same as Existing */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
                 <div className="flex border-b border-slate-100 bg-slate-50/50">
                   <button onClick={() => setActiveInputTab('sites')} className={`flex-1 py-4 px-6 text-xs font-black uppercase tracking-widest transition-all ${activeInputTab === 'sites' ? 'bg-white text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:bg-slate-100'}`}>Stock & POB</button>
                   <button onClick={() => setActiveInputTab('fuel')} className={`flex-1 py-4 px-6 text-xs font-black uppercase tracking-widest transition-all ${activeInputTab === 'fuel' ? 'bg-white text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:bg-slate-100'}`}>Fuel</button>
-                  <button onClick={() => setActiveInputTab('activities')} className={`flex-1 py-4 px-6 text-xs font-black uppercase tracking-widest transition-all ${activeInputTab === 'activities' ? 'bg-white text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:bg-slate-100'}`}>Activities</button>
                   <button onClick={() => setActiveInputTab('rigmoves')} className={`flex-1 py-4 px-6 text-xs font-black uppercase tracking-widest transition-all ${activeInputTab === 'rigmoves' ? 'bg-white text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:bg-slate-100'}`}>Rig Moves</button>
                 </div>
 
@@ -679,41 +722,6 @@ const App: React.FC = () => {
                             <NumericInput label="Biosolar (LTR)" value={fuel.biosolar} onChange={(val) => updateLocalFuel(fuel.name, 'biosolar', val)} />
                             <NumericInput label="Pertalite (LTR)" value={fuel.pertalite} onChange={(val) => updateLocalFuel(fuel.name, 'pertalite', val)} />
                             <NumericInput label="Pertadex (LTR)" value={fuel.pertadex} onChange={(val) => updateLocalFuel(fuel.name, 'pertadex', val)} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {activeInputTab === 'activities' && (
-                    <div className="space-y-8">
-                      {localActs.map((act) => (
-                        <div key={act.site} className="space-y-4">
-                          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: localSites.find(s => s.name === act.site)?.color || '#94a3b8' }}></div>
-                              <h3 className="font-black text-slate-800 uppercase tracking-tight">{act.site}</h3>
-                            </div>
-                            <button onClick={() => addLocalActivityItem(act.site)} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-indigo-100 transition-all">
-                              <Plus size={14} /> Add Activity
-                            </button>
-                          </div>
-                          <div className="space-y-3">
-                            {act.items.map((item, idx) => (
-                              <div key={idx} className="flex gap-4 items-start bg-slate-50 p-4 rounded-xl border border-slate-100 group">
-                                <div className="w-1/4 space-y-1.5">
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase">Category</label>
-                                  <input value={item.category} onChange={(e) => updateLocalActivityItem(act.site, idx, 'category', e.target.value)} className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none" />
-                                </div>
-                                <div className="flex-1 space-y-1.5">
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase">Description</label>
-                                  <AutoResizeTextarea value={item.description} onChange={(e) => updateLocalActivityItem(act.site, idx, 'description', e.target.value)} placeholder="Tulis rincian..." className="w-full min-h-[40px] px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold outline-none" />
-                                </div>
-                                <button onClick={() => removeLocalActivityItem(act.site, idx)} className="mt-6 p-2 text-rose-300 hover:text-rose-600 transition-colors">
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
-                            ))}
                           </div>
                         </div>
                       ))}
@@ -759,7 +767,14 @@ const App: React.FC = () => {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <StatCard title="Weekly Good Issue" value={formatCurrency(weeklyStats!.totalIssue)} icon={<ArrowUpRight size={24} className="text-emerald-500" />} />
                         <StatCard title="Weekly Good Receive" value={formatCurrency(weeklyStats!.totalReceive)} icon={<ArrowDownLeft size={24} className="text-rose-500" />} />
-                        <StatCard title="Last Stock Value" value={formatCurrency(weeklyStats!.lastDayStock)} icon={<Package size={24} className="text-slate-600" />} trend={weeklyStats!.stockTrendValue} trendClassName={weeklyStats!.stockIsPositive ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'} />
+                        <StatCard 
+                          title="Last Stock Value" 
+                          value={formatCurrency(weeklyStats!.lastDayStock)} 
+                          icon={<Package size={24} className="text-slate-600" />} 
+                          trend={weeklyStats!.stockTrendValue} 
+                          trendClassName={weeklyStats!.stockIsPositive ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'} 
+                          subtitle={`vs ${new Date(startDate).toLocaleDateString('id-ID', {day:'numeric', month:'short'})}`}
+                        />
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -801,7 +816,6 @@ const App: React.FC = () => {
                         </ChartCard>
                       </div>
 
-                      {/* Wide Weekly Rig Move and Corrected Weekly Fuel Consumption */}
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                         <ChartCard title="Weekly Rig Move" icon={<Truck size={18} />} className="md:col-span-2">
                           <div className="flex flex-col space-y-3">
@@ -835,9 +849,9 @@ const App: React.FC = () => {
                               <div key={data.name} className="flex flex-col">
                                 <div className="flex items-center gap-2 mb-1"><div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === data.name)?.color }}></div><span className="text-[10px] font-bold text-slate-600 uppercase truncate">{data.name}</span></div>
                                 <div className="flex gap-4 ml-3.5 tabular-nums text-[11px] font-bold text-slate-900 leading-none">
-                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">BIO</span><span>{formatNumber(data.biosolar)}</span></div>
-                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">LITE</span><span>{formatNumber(data.pertalite)}</span></div>
-                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">DEX</span><span>{formatNumber(data.pertadex)}</span></div>
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase font-bold">BIO</span><span>{formatNumber(data.biosolar)}</span></div>
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase font-bold">LITE</span><span>{formatNumber(data.pertalite)}</span></div>
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase font-bold">DEX</span><span>{formatNumber(data.pertadex)}</span></div>
                                 </div>
                               </div>
                             ))}
@@ -890,7 +904,6 @@ const App: React.FC = () => {
                         </ChartCard>
                       </div>
 
-                      {/* Weekly Update Zona 9 - NO SCROLL, FULL TEXT VISIBLE */}
                       <div className="flex-1 flex flex-col pt-8 overflow-visible min-h-fit">
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-auto flex flex-col overflow-visible">
                           <SectionHeader title="Weekly Update Zona 9" icon={<Edit3 size={18} />} />
@@ -910,7 +923,7 @@ const App: React.FC = () => {
                     <div className="xl:col-span-2 flex flex-col overflow-visible">
                       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-auto flex flex-col overflow-visible">
                         <SectionHeader title="Weekly Update Sites" icon={<Edit3 size={18} />} />
-                        <div className="flex-1 space-y-6 mt-4 overflow-visible">
+                        <div className="flex-1 space-y-6 mt-4 overflow-visible h-auto">
                           {Object.keys(weeklyUpdates).filter(site => site !== 'ZONA 9').map((site) => (
                             <div key={site} className="space-y-3 p-4 bg-slate-50/50 rounded-xl border border-slate-100 overflow-visible h-auto">
                               <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
@@ -932,8 +945,8 @@ const App: React.FC = () => {
                   </div>
                 ) : (
                   /* DAILY DASHBOARD VIEW LAYOUT */
-                  <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-in fade-in duration-700">
-                    <div className="xl:col-span-3 space-y-8">
+                  <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-in fade-in duration-700 overflow-visible items-stretch">
+                    <div className="xl:col-span-3 space-y-8 overflow-visible flex flex-col">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <StatCard title="Total Good Issue" value={formatCurrency(dashboardStats!.totalGoodIssue)} icon={<ArrowUpRight size={24} className="text-emerald-500" />} />
                         <StatCard title="Total Good Receive" value={formatCurrency(dashboardStats!.totalGoodReceive)} icon={<ArrowDownLeft size={24} className="text-rose-500" />} />
@@ -1034,9 +1047,9 @@ const App: React.FC = () => {
                               <div key={data.name} className="flex flex-col">
                                 <div className="flex items-center gap-2 mb-1"><div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: sites.find(s => s.name === data.name)?.color }}></div><span className="text-[10px] font-bold text-slate-600 uppercase truncate">{data.name}</span></div>
                                 <div className="flex gap-4 ml-3.5 tabular-nums text-[11px] font-bold text-slate-900 leading-none">
-                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">BIO</span><span>{formatNumber(data.biosolar)}</span></div>
-                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">LITE</span><span>{formatNumber(data.pertalite)}</span></div>
-                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">DEX</span><span>{formatNumber(data.pertadex)}</span></div>
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase font-bold">BIO</span><span>{formatNumber(data.biosolar)}</span></div>
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase font-bold">LITE</span><span>{formatNumber(data.pertalite)}</span></div>
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase font-bold">DEX</span><span>{formatNumber(data.pertadex)}</span></div>
                                 </div>
                               </div>
                             ))}
@@ -1090,17 +1103,23 @@ const App: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="xl:col-span-2">
-                      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 h-full p-8 flex flex-col overflow-visible">
+                    <div className="xl:col-span-2 flex flex-col overflow-visible">
+                      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-auto flex flex-col overflow-visible">
                         <SectionHeader title="Daily Activity Log" icon={<ActivityIcon size={18} />} />
-                        <div className="flex-1 space-y-6 mt-4 overflow-visible">
-                          {sortedActivities.map((act, i) => (
-                            <div key={i} className="space-y-3">
-                              <div className="flex items-center gap-2 border-b border-slate-50 py-1.5 sticky top-0 bg-white z-10">
-                                <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: sites.find(s => s.name === act.site)?.color }}></div>
-                                <h4 className="text-sm font-bold text-slate-900">{act.site}</h4>
+                        <div className="flex-1 space-y-6 mt-4 overflow-visible h-auto">
+                          {sortedSiteNames.map((siteName) => (
+                            <div key={siteName} className="space-y-3 p-4 bg-slate-50/50 rounded-xl border border-slate-100 overflow-visible h-auto">
+                              <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                                <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: sites.find(s => s.name === siteName)?.color }}></div>
+                                <h4 className="text-xs font-black text-slate-800 uppercase">{siteName}</h4>
                               </div>
-                              <div className="space-y-3 px-1">{act.items.map((item, j) => (<div key={j} className="relative pl-5 py-1"><div className="absolute left-0 top-[12px] w-1.5 h-1.5 rounded-full bg-slate-300"></div><div className="flex flex-col"><span className="text-[10px] font-bold text-indigo-700 uppercase leading-none mb-1">{item.category}</span><p className="text-sm text-slate-700 leading-relaxed font-medium">{item.description}</p></div></div>))}</div>
+                              <AutoResizeTextarea 
+                                value={dailyUpdates[siteName] || ''} 
+                                onChange={(e) => setDailyUpdates({...dailyUpdates, [siteName]: e.target.value})} 
+                                placeholder={`Catatan log harian untuk ${siteName}...`} 
+                                className="w-full bg-transparent border-none text-sm font-semibold text-slate-700 resize-none outline-none p-0 h-auto" 
+                                readOnly={isExportMode} 
+                              />
                             </div>
                           ))}
                         </div>
@@ -1122,7 +1141,6 @@ const App: React.FC = () => {
         .export-container { width: 1440px !important; max-width: none !important; padding: 40px !important; }
         .bg-white.rounded-2xl { overflow: visible !important; height: auto !important; }
         .grid, .xl\\:col-span-3, .xl\\:col-span-2 { overflow: visible !important; }
-        .print-expanded textarea { height: auto !important; }
       `}</style>
     </div>
   );
