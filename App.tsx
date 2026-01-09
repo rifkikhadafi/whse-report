@@ -101,13 +101,18 @@ const AutoResizeTextarea = ({ value, onChange, placeholder, className, readOnly 
     adjustHeight();
   }, [value]);
 
+  useEffect(() => {
+    const timer = setTimeout(adjustHeight, 250); // Delay for layout settled
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <textarea
       ref={textareaRef}
       value={value}
       onChange={onChange}
       placeholder={placeholder}
-      className={`${className} overflow-hidden`}
+      className={`${className} overflow-hidden resize-none`}
       rows={1}
       readOnly={readOnly}
     />
@@ -766,7 +771,7 @@ const App: React.FC = () => {
             (activeView === 'dashboard' || activeView === 'weekly') ? (
               (activeView === 'dashboard' ? dashboardStats : weeklyStats) ? (
                 activeView === 'weekly' ? (
-                  /* WEEKLY DASHBOARD VIEW LAYOUT - Replicated structure from Daily Dashboard */
+                  /* WEEKLY DASHBOARD VIEW LAYOUT */
                   <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-in fade-in duration-700 overflow-visible items-stretch">
                     {/* Left Column (3/5 width) */}
                     <div className="xl:col-span-3 space-y-8 overflow-visible flex flex-col">
@@ -782,7 +787,9 @@ const App: React.FC = () => {
                             <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                               <span className="w-[40%]">Location</span><span className="w-[30%] text-center">Issue</span><span className="w-[30%] text-center">Receive</span>
                             </div>
-                            {Object.entries(weeklyStats!.siteAgg).map(([name, data]: any) => (
+                            {Object.entries(weeklyStats!.siteAgg)
+                              .filter(([name]) => name !== 'ZONA 9')
+                              .map(([name, data]: any) => (
                               <div key={name} className="flex items-center px-2 py-3 border-b border-slate-50 last:border-0">
                                 <div className="w-[40%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-xs font-bold text-slate-800 truncate">{name}</span></div>
                                 <div className="w-[30%] text-center font-bold text-emerald-700 text-xs tabular-nums">{data.issued > 0 ? formatCurrency(data.issued) : '-'}</div>
@@ -813,11 +820,12 @@ const App: React.FC = () => {
                         </ChartCard>
                       </div>
 
+                      {/* Wide Weekly Rig Move and Sized Weekly Fuel Consumption */}
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-                        <ChartCard title="Weekly Rig Move" icon={<Truck size={18} />} className="md:col-span-1">
+                        <ChartCard title="Weekly Rig Move" icon={<Truck size={18} />} className="md:col-span-2">
                           <div className="flex flex-col space-y-3">
                             {weeklyRigs.length > 0 ? (
-                              weeklyRigs.slice(0, 5).map((rm, idx) => (
+                              weeklyRigs.slice(0, 10).map((rm, idx) => (
                                 <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0">
                                   <div className="flex items-center gap-2 mb-1"><div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div><span className="text-[10px] font-bold text-slate-700 uppercase truncate">{rm.site} - {rm.rig_name}</span></div>
                                   <div className="flex items-center gap-2 text-[9px] text-slate-600 font-semibold ml-3.5"><span className="truncate">{rm.from_loc}</span><MoveRight size={10} className="text-indigo-600 shrink-0" /><span className="truncate">{rm.to_loc}</span></div>
@@ -825,7 +833,7 @@ const App: React.FC = () => {
                               ))
                             ) : <div className="text-center py-10 opacity-20"><Truck size={32} className="mx-auto" /></div>}
                           </div>
-                          <div className="flex flex-col items-center pt-4 border-t border-slate-100 mt-4">
+                          <div className="flex flex-col items-center pt-4 border-t border-slate-100 mt-auto">
                             <h3 className="text-[10px] font-bold text-slate-600 uppercase mb-1">WEEKLY MOVE</h3>
                             <div className="relative w-28 h-28">
                               <ResponsiveContainer width="100%" height="100%">
@@ -840,14 +848,14 @@ const App: React.FC = () => {
                           </div>
                         </ChartCard>
 
-                        <ChartCard title="Weekly Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-3">
+                        <ChartCard title="Weekly Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-2">
                           <div className="grid grid-cols-2 gap-x-8 gap-y-3 w-full pb-4">
                             {Object.entries(weeklyStats!.fuelAgg).map(([name, data]: any) => ({ name, ...data })).map((data: any) => (
                               <div key={data.name} className="flex flex-col">
                                 <div className="flex items-center gap-2 mb-1"><div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === data.name)?.color }}></div><span className="text-[10px] font-bold text-slate-600 uppercase truncate">{data.name}</span></div>
                                 <div className="flex gap-4 ml-3.5 tabular-nums text-[11px] font-bold text-slate-900 leading-none">
                                   <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">BIO</span><span>{formatNumber(data.biosolar)}</span></div>
-                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">PERTALITE</span><span>{formatNumber(data.pertalite)}</span></div>
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">LITE</span><span>{formatNumber(data.pertalite)}</span></div>
                                   <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">DEX</span><span>{formatNumber(data.pertadex)}</span></div>
                                 </div>
                               </div>
@@ -901,7 +909,7 @@ const App: React.FC = () => {
                         </ChartCard>
                       </div>
 
-                      {/* Weekly Update Zona 9 - Ensure auto-height and bottom alignment */}
+                      {/* Weekly Update Zona 9 - Align bottom with right column updates, ensured auto-resizing */}
                       <div className="flex-1 flex flex-col pt-8 overflow-visible">
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-full flex flex-col overflow-visible">
                           <SectionHeader title="Weekly Update Zona 9" icon={<Edit3 size={18} />} />
@@ -910,7 +918,7 @@ const App: React.FC = () => {
                               value={weeklyUpdates['ZONA 9'] || ''} 
                               onChange={(e) => setWeeklyUpdates({...weeklyUpdates, ['ZONA 9']: e.target.value})} 
                               placeholder="Catatan mingguan..." 
-                              className="w-full bg-slate-50/50 p-6 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 resize-none outline-none leading-relaxed h-auto overflow-hidden flex-1" 
+                              className="w-full bg-slate-50/50 p-6 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 outline-none leading-relaxed overflow-hidden flex-1" 
                               readOnly={isExportMode} 
                             />
                           </div>
@@ -918,7 +926,7 @@ const App: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Right Column (2/5 width) - Weekly Update Sites */}
+                    {/* Right Column (2/5 width) - Weekly Update Sites (Position same as Daily Activity Log) */}
                     <div className="xl:col-span-2 flex flex-col overflow-visible">
                       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-full flex flex-col overflow-visible">
                         <SectionHeader title="Weekly Update Sites" icon={<Edit3 size={18} />} />
@@ -1047,7 +1055,7 @@ const App: React.FC = () => {
                                 <div className="flex items-center gap-2 mb-1"><div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: sites.find(s => s.name === data.name)?.color }}></div><span className="text-[10px] font-bold text-slate-600 uppercase truncate">{data.name}</span></div>
                                 <div className="flex gap-4 ml-3.5 tabular-nums text-[11px] font-bold text-slate-900 leading-none">
                                   <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">BIO</span><span>{formatNumber(data.biosolar)}</span></div>
-                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">PERTALITE</span><span>{formatNumber(data.pertalite)}</span></div>
+                                  <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">LITE</span><span>{formatNumber(data.pertalite)}</span></div>
                                   <div className="flex flex-col"><span className="text-[7px] text-slate-500 uppercase">DEX</span><span>{formatNumber(data.pertadex)}</span></div>
                                 </div>
                               </div>
