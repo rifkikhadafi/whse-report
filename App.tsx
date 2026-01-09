@@ -297,16 +297,42 @@ const App: React.FC = () => {
   const handleDownloadPDF = async () => {
     if (!dashboardRef.current) return;
     setIsDownloading(true);
-    setProgress('Mengekspor Laporan...');
+    setProgress('Membangun Kanvas Laporan...');
     try {
-      await new Promise(r => setTimeout(r, 1000));
-      const canvas = await html2canvas(dashboardRef.current, { scale: 2, useCORS: true, backgroundColor: '#f8fafc' });
-      const imgData = canvas.toDataURL('image/png', 1.0);
-      const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [canvas.width, canvas.height] });
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+      // Pastikan scroll berada di atas sebelum capture
+      const mainElement = dashboardRef.current.parentElement;
+      if (mainElement) mainElement.scrollTop = 0;
+      
+      await new Promise(r => setTimeout(r, 800)); // Tunggu rendering stabil
+
+      const element = dashboardRef.current;
+      const canvas = await html2canvas(element, { 
+        scale: 1.5, // Scale dikurangi sedikit agar performa lebih stabil namun tetap tajam
+        useCORS: true, 
+        backgroundColor: '#f8fafc',
+        height: element.scrollHeight, // Capture seluruh tinggi konten
+        windowHeight: element.scrollHeight, // Pastikan viewport capture mencakup seluruh konten
+        logging: false
+      });
+
+      setProgress('Membuat Dokumen PDF...');
+      const imgData = canvas.toDataURL('image/jpeg', 0.9); // Menggunakan JPEG untuk ukuran file lebih optimal
+      const pdf = new jsPDF({ 
+        orientation: 'landscape', 
+        unit: 'px', 
+        format: [canvas.width, canvas.height] 
+      });
+
+      pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
       pdf.save(`Zona9_Report_${selectedDate}.pdf`);
-    } catch (e) { showToast('Gagal download PDF', true); }
-    finally { setIsDownloading(false); setProgress(''); }
+      showToast('Laporan berhasil diunduh!');
+    } catch (e) { 
+      console.error(e);
+      showToast('Gagal download PDF', true); 
+    } finally { 
+      setIsDownloading(false); 
+      setProgress(''); 
+    }
   };
 
   const formattedSelectedDate = new Date(selectedDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -384,491 +410,491 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto h-screen p-4 lg:p-10 scroll-smooth" ref={dashboardRef}>
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 relative z-50">
-          <div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight">Warehouse Operation Zona 9 Dashboard</h1>
-            <div className="flex items-center gap-4 mt-1.5">
-              <div className="flex items-center gap-2 text-slate-500 font-semibold">
-                <Calendar size={16} className="text-indigo-500" />
-                <span className="text-sm">Laporan Harian • {formattedSelectedDate}</span>
+      <main className="flex-1 overflow-y-auto h-screen scroll-smooth">
+        {/* Kontainer ref dipindahkan ke sini agar tidak terpotong oleh overflow h-screen */}
+        <div className="p-4 lg:p-10 min-h-full" ref={dashboardRef}>
+          <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 relative z-50">
+            <div>
+              <h1 className="text-3xl font-black text-slate-900 tracking-tight">Warehouse Operation Zona 9 Dashboard</h1>
+              <div className="flex items-center gap-4 mt-1.5">
+                <div className="flex items-center gap-2 text-slate-500 font-semibold">
+                  <Calendar size={16} className="text-indigo-500" />
+                  <span className="text-sm">Laporan Harian • {formattedSelectedDate}</span>
+                </div>
+                <div className="flex items-center gap-2 no-print relative">
+                  <input 
+                    type="date" 
+                    value={selectedDate} 
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="h-9 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer hover:border-indigo-300 transition-colors"
+                  />
+                </div>
+                {isLoading && <Loader2 size={14} className="animate-spin text-indigo-400 ml-2" />}
               </div>
-              <div className="flex items-center gap-2 no-print relative">
-                <input 
-                  type="date" 
-                  value={selectedDate} 
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="h-9 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm cursor-pointer hover:border-indigo-300 transition-colors"
-                />
-              </div>
-              {isLoading && <Loader2 size={14} className="animate-spin text-indigo-400 ml-2" />}
             </div>
-          </div>
-          <div className="flex items-center gap-3 no-print">
-            {activeView === 'dashboard' ? (
-              <button onClick={handleDownloadPDF} disabled={isDownloading || !dashboardStats} className={`flex items-center justify-center gap-2 px-6 h-11 text-white rounded-xl shadow-xl transition-all active:scale-95 font-bold text-sm ${!dashboardStats ? 'bg-slate-300' : 'bg-slate-900 hover:bg-slate-800'}`}>
-                <Download size={18} />
-                <span>Download PDF</span>
-              </button>
-            ) : (
-              <button onClick={handleBulkSave} disabled={isSaving} className="flex items-center justify-center gap-2 px-8 h-11 bg-indigo-600 text-white rounded-xl shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-black text-sm uppercase tracking-widest">
-                {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                <span>Simpan Database</span>
-              </button>
-            )}
-          </div>
-        </header>
+            <div className="flex items-center gap-3 no-print">
+              {activeView === 'dashboard' ? (
+                <button onClick={handleDownloadPDF} disabled={isDownloading || !dashboardStats} className={`flex items-center justify-center gap-2 px-6 h-11 text-white rounded-xl shadow-xl transition-all active:scale-95 font-bold text-sm ${!dashboardStats ? 'bg-slate-300' : 'bg-slate-900 hover:bg-slate-800'}`}>
+                  <Download size={18} />
+                  <span>Download PDF</span>
+                </button>
+              ) : (
+                <button onClick={handleBulkSave} disabled={isSaving} className="flex items-center justify-center gap-2 px-8 h-11 bg-indigo-600 text-white rounded-xl shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-black text-sm uppercase tracking-widest">
+                  {isSaving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                  <span>Simpan Database</span>
+                </button>
+              )}
+            </div>
+          </header>
 
-        {activeView === 'dashboard' ? (
-          dashboardStats ? (
-            <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-in fade-in duration-700">
-              <div className="xl:col-span-3 space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <StatCard title="Total Good Issue" value={formatCurrency(dashboardStats.totalGoodIssue)} icon={<ArrowUpRight size={24} className="text-emerald-500" />} trend="-1.8%" trendClassName="bg-emerald-50 text-emerald-600" />
-                  <StatCard title="Total Good Receive" value={formatCurrency(dashboardStats.totalGoodReceive)} icon={<ArrowDownLeft size={24} className="text-rose-500" />} trend="+0.5%" trendClassName="bg-rose-50 text-rose-600" />
-                  <StatCard title="Total Stock Value" value={formatCurrency(dashboardStats.totalStockValue)} icon={<Package size={24} className="text-slate-600" />} trend="+2.4%" trendClassName="bg-rose-50 text-rose-600" />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <ChartCard title="Good Issue & Receive" subtitle="All Field Zona 9" icon={<ArrowLeftRight size={18} />}>
-                    <div className="flex flex-col h-[280px]">
-                      <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        <span className="w-[40%] text-left">Location</span>
-                        <span className="w-[30%] text-center">Good Issue</span>
-                        <span className="w-[30%] text-center">Good Receive</span>
-                      </div>
-                      <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1">
-                        {sites.filter(s => s.name !== 'ZONA 9').map((site, index) => (
-                          <div key={index} className="flex items-center px-2 py-3 hover:bg-slate-50 rounded-xl border-b border-slate-50 last:border-0 transition-colors">
-                            <div className="w-[40%] flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: site.color || '#cbd5e1' }}></span>
-                              <span className="text-xs font-bold text-slate-700 truncate">{site.name}</span>
-                            </div>
-                            <div className="w-[30%] text-center font-semibold text-emerald-600 text-xs tabular-nums">{site.issued > 0 ? formatCurrency(site.issued) : '-'}</div>
-                            <div className="w-[30%] text-center font-semibold text-rose-600 text-xs tabular-nums">{site.received > 0 ? formatCurrency(site.received) : '-'}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </ChartCard>
-                  <ChartCard title="Stock Value" subtitle="All Field Zona 9" icon={<TrendingUp size={18} />}>
-                    <div className="flex flex-col h-full gap-4">
-                      <div className="w-full h-[180px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie 
-                              data={sites.filter(s => s.stock > 0)} 
-                              innerRadius={45} 
-                              outerRadius={70} 
-                              paddingAngle={4} 
-                              dataKey="stock" 
-                              nameKey="name" 
-                              isAnimationActive={false}
-                              labelLine={false}
-                              label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
-                            >
-                              {sites.filter(s => s.stock > 0).map((entry, index) => <Cell key={index} fill={entry.color || '#94a3b8'} stroke="none" />)}
-                            </Pie>
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div className="w-full space-y-3 pt-2">
-                        {sites.filter(s => s.stock > 0).map((site, index) => (
-                          <div key={index} className="flex items-center justify-between border-b border-slate-50 pb-2 last:border-0">
-                            <div className="flex items-center gap-2">
-                              <div className="w-1.5 h-3 rounded-full" style={{ backgroundColor: site.color || '#cbd5e1' }}></div>
-                              <span className="text-[10px] font-bold text-slate-500 uppercase">{site.name}</span>
-                            </div>
-                            <span className="text-xs font-bold text-slate-900 tabular-nums">{formatCurrency(site.stock)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </ChartCard>
-                </div>
-                
-                {/* Lower Row: POB, Rig Move, and Fuel Consumption aligned horizontally */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-                  <ChartCard title="Person on Board" icon={<Users size={18} />} className="md:col-span-1">
-                    <div className="h-[210px] flex flex-col space-y-3 pr-1">
-                      {sites.map((site) => (
-                        <div key={site.name} className="flex flex-col">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <div className="w-1.5 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: site.color || '#cbd5e1' }}></div>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight truncate">{site.name}</span>
-                          </div>
-                          <span className="text-[12px] font-bold text-slate-900 ml-3.5 tabular-nums">{site.pob}</span>
+          {activeView === 'dashboard' ? (
+            dashboardStats ? (
+              <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-in fade-in duration-700">
+                <div className="xl:col-span-3 space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <StatCard title="Total Good Issue" value={formatCurrency(dashboardStats.totalGoodIssue)} icon={<ArrowUpRight size={24} className="text-emerald-500" />} trend="-1.8%" trendClassName="bg-emerald-50 text-emerald-600" />
+                    <StatCard title="Total Good Receive" value={formatCurrency(dashboardStats.totalGoodReceive)} icon={<ArrowDownLeft size={24} className="text-rose-500" />} trend="+0.5%" trendClassName="bg-rose-50 text-rose-600" />
+                    <StatCard title="Total Stock Value" value={formatCurrency(dashboardStats.totalStockValue)} icon={<Package size={24} className="text-slate-600" />} trend="+2.4%" trendClassName="bg-rose-50 text-rose-600" />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <ChartCard title="Good Issue & Receive" subtitle="All Field Zona 9" icon={<ArrowLeftRight size={18} />}>
+                      <div className="flex flex-col h-[280px]">
+                        <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <span className="w-[40%] text-left">Location</span>
+                          <span className="w-[30%] text-center">Good Issue</span>
+                          <span className="w-[30%] text-center">Good Receive</span>
                         </div>
-                      ))}
-                    </div>
-                    <div className="flex flex-col items-center pt-8 border-t border-slate-100 mt-6">
-                      <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total POB</h3>
-                      <div className="relative w-28 h-28">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie data={sites} innerRadius={30} outerRadius={45} paddingAngle={2} dataKey="pob" isAnimationActive={false} stroke="none">
-                              {sites.map((entry, index) => <Cell key={index} fill={entry.color || '#cbd5e1'} />)}
-                            </Pie>
-                          </PieChart>
-                        </ResponsiveContainer>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                          <span className="text-lg font-black text-slate-900">{dashboardStats.totalPOB}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </ChartCard>
-
-                  <ChartCard title="Support Rig Move" icon={<Truck size={18} />} className="md:col-span-1">
-                    <div className="h-[210px] space-y-3 pr-1 overflow-y-auto custom-scrollbar">
-                      {rigMoves.length > 0 ? (
-                        rigMoves.map((rm, idx) => (
-                          <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0 mb-2">
-                            <div className="flex items-center gap-2 mb-1">
-                              <div className="w-1.5 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: sites.find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div>
-                              <span className="text-[10px] font-black text-slate-700 uppercase tracking-tight truncate">
-                                {rm.site} - {rm.rig_name}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium ml-3.5">
-                              <span className="truncate">{rm.from_loc}</span>
-                              <MoveRight size={10} className="text-indigo-400 shrink-0" />
-                              <span className="truncate">{rm.to_loc}</span>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="flex flex-col items-center justify-center h-full opacity-20">
-                          <Truck size={32} />
-                          <span className="text-[10px] font-bold uppercase mt-2">No Movement</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-center pt-8 border-t border-slate-100 mt-6">
-                      <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">TOTAL MOVE</h3>
-                      <div className="relative w-28 h-28">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie 
-                              data={rigMovesBySite.length > 0 ? rigMovesBySite : [{ value: 1, color: '#f1f5f9' }]} 
-                              innerRadius={30} 
-                              outerRadius={45} 
-                              dataKey="value" 
-                              isAnimationActive={false} 
-                              stroke="none"
-                            >
-                              {rigMovesBySite.length > 0 ? (
-                                rigMovesBySite.map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={entry.color} />
-                                ))
-                              ) : (
-                                <Cell fill="#f1f5f9" />
-                              )}
-                            </Pie>
-                          </PieChart>
-                        </ResponsiveContainer>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                          <span className="text-lg font-black text-slate-900">{dashboardStats.totalRigMoves}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </ChartCard>
-
-                  <ChartCard title="Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-2">
-                    <div className="flex flex-col h-full">
-                      {/* Grid Site Content - Top portion (Increased to 210px to accommodate Total compactly) */}
-                      <div className="h-[210px] flex flex-col justify-between">
-                        <div className="grid grid-cols-2 gap-x-8 gap-y-4 px-1 w-full">
-                          {fuelData.map((data) => (
-                            <div key={data.name} className="flex flex-col">
-                              <div className="flex items-center gap-2 mb-1">
-                                <div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: sites.find(s => s.name === data.name)?.color || '#94a3b8' }}></div>
-                                <span className="text-[11px] font-black text-slate-500 uppercase tracking-tight truncate">{data.name}</span>
+                        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1">
+                          {sites.filter(s => s.name !== 'ZONA 9').map((site, index) => (
+                            <div key={index} className="flex items-center px-2 py-3 hover:bg-slate-50 rounded-xl border-b border-slate-50 last:border-0 transition-colors">
+                              <div className="w-[40%] flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: site.color || '#cbd5e1' }}></span>
+                                <span className="text-xs font-bold text-slate-700 truncate">{site.name}</span>
                               </div>
-                              <div className="flex gap-6 ml-3.5 tabular-nums">
-                                <div className="flex flex-col">
-                                  <span className="text-slate-300 font-black uppercase text-[8px] mb-0.5">BIO</span>
-                                  <span className="text-xs font-black text-slate-900 leading-none">{formatNumber(data.biosolar)}</span>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-slate-300 font-black uppercase text-[8px] mb-0.5">PERT</span>
-                                  <span className="text-xs font-black text-slate-900 leading-none">{formatNumber(data.pertalite)}</span>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-slate-300 font-black uppercase text-[8px] mb-0.5">DEX</span>
-                                  <span className="text-xs font-black text-slate-900 leading-none">{formatNumber(data.pertadex)}</span>
-                                </div>
-                              </div>
+                              <div className="w-[30%] text-center font-semibold text-emerald-600 text-xs tabular-nums">{site.issued > 0 ? formatCurrency(site.issued) : '-'}</div>
+                              <div className="w-[30%] text-center font-semibold text-rose-600 text-xs tabular-nums">{site.received > 0 ? formatCurrency(site.received) : '-'}</div>
                             </div>
                           ))}
                         </div>
-                        {/* Compact Total - Above the Sekat */}
-                        <div className="flex items-center justify-center gap-4 bg-slate-50/50 py-2 rounded-xl mt-4">
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">TOTAL</span>
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="text-xl font-black text-indigo-600 tabular-nums">{formatNumber(dashboardStats.grandTotalFuel)}</span>
-                            <span className="text-[9px] text-slate-400 font-black uppercase">LTR</span>
+                      </div>
+                    </ChartCard>
+                    <ChartCard title="Stock Value" subtitle="All Field Zona 9" icon={<TrendingUp size={18} />}>
+                      <div className="flex flex-col h-full gap-4">
+                        <div className="w-full h-[180px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie 
+                                data={sites.filter(s => s.stock > 0)} 
+                                innerRadius={45} 
+                                outerRadius={70} 
+                                paddingAngle={4} 
+                                dataKey="stock" 
+                                nameKey="name" 
+                                isAnimationActive={false}
+                                labelLine={false}
+                                label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                              >
+                                {sites.filter(s => s.stock > 0).map((entry, index) => <Cell key={index} fill={entry.color || '#94a3b8'} stroke="none" />)}
+                              </Pie>
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="w-full space-y-3 pt-2">
+                          {sites.filter(s => s.stock > 0).map((site, index) => (
+                            <div key={index} className="flex items-center justify-between border-b border-slate-50 pb-2 last:border-0">
+                              <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-3 rounded-full" style={{ backgroundColor: site.color || '#cbd5e1' }}></div>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">{site.name}</span>
+                              </div>
+                              <span className="text-xs font-bold text-slate-900 tabular-nums">{formatCurrency(site.stock)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </ChartCard>
+                  </div>
+                  
+                  {/* Lower Row: POB, Rig Move, and Fuel Consumption aligned horizontally */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                    <ChartCard title="Person on Board" icon={<Users size={18} />} className="md:col-span-1">
+                      <div className="h-[210px] flex flex-col space-y-3 pr-1">
+                        {sites.map((site) => (
+                          <div key={site.name} className="flex flex-col">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <div className="w-1.5 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: site.color || '#cbd5e1' }}></div>
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight truncate">{site.name}</span>
+                            </div>
+                            <span className="text-[12px] font-bold text-slate-900 ml-3.5 tabular-nums">{site.pob}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex flex-col items-center pt-8 border-t border-slate-100 mt-6">
+                        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total POB</h3>
+                        <div className="relative w-28 h-28">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie data={sites} innerRadius={30} outerRadius={45} paddingAngle={2} dataKey="pob" isAnimationActive={false} stroke="none">
+                                {sites.map((entry, index) => <Cell key={index} fill={entry.color || '#cbd5e1'} />)}
+                              </Pie>
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                            <span className="text-lg font-black text-slate-900">{dashboardStats.totalPOB}</span>
                           </div>
                         </div>
                       </div>
+                    </ChartCard>
 
-                      {/* Sub-total section with 3 donuts - Aligned divider */}
-                      <div className="flex flex-col py-5 border-t border-slate-100 mt-6 bg-slate-50/20 rounded-2xl px-2">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.25em] text-center mb-5">SUB-TOTAL FUEL</span>
-                        <div className="grid grid-cols-3 gap-1">
-                          <div className="flex flex-col items-center">
-                            <div className="w-20 h-20 relative">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                  <Pie data={biosolarSegments} innerRadius={22} outerRadius={34} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
-                                    {biosolarSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
-                                  </Pie>
-                                </PieChart>
-                              </ResponsiveContainer>
-                              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                <span className="text-[10px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalBiosolar)}</span>
-                                <span className="text-[6px] font-black text-slate-400 mt-0.5">L</span>
+                    <ChartCard title="Support Rig Move" icon={<Truck size={18} />} className="md:col-span-1">
+                      <div className="h-[210px] space-y-3 pr-1 overflow-y-auto custom-scrollbar">
+                        {rigMoves.length > 0 ? (
+                          rigMoves.map((rm, idx) => (
+                            <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0 mb-2">
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="w-1.5 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: sites.find(s => s.name === rm.site)?.color || '#cbd5e1' }}></div>
+                                <span className="text-[10px] font-black text-slate-700 uppercase tracking-tight truncate">
+                                  {rm.site} - {rm.rig_name}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium ml-3.5">
+                                <span className="truncate">{rm.from_loc}</span>
+                                <MoveRight size={10} className="text-indigo-400 shrink-0" />
+                                <span className="truncate">{rm.to_loc}</span>
                               </div>
                             </div>
-                            <span className="text-[8px] font-black text-slate-400 mt-2 uppercase tracking-[0.1em]">BIOSOLAR</span>
+                          ))
+                        ) : (
+                          <div className="flex flex-col items-center justify-center h-full opacity-20">
+                            <Truck size={32} />
+                            <span className="text-[10px] font-bold uppercase mt-2">No Movement</span>
                           </div>
-                          <div className="flex flex-col items-center">
-                            <div className="w-20 h-20 relative">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                  <Pie data={pertaliteSegments} innerRadius={22} outerRadius={34} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
-                                    {pertaliteSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
-                                  </Pie>
-                                </PieChart>
-                              </ResponsiveContainer>
-                              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                <span className="text-[10px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertalite)}</span>
-                                <span className="text-[6px] font-black text-slate-400 mt-0.5">L</span>
-                              </div>
-                            </div>
-                            <span className="text-[8px] font-black text-slate-400 mt-2 uppercase tracking-[0.1em]">PERTALITE</span>
-                          </div>
-                          <div className="flex flex-col items-center">
-                            <div className="w-20 h-20 relative">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                  <Pie data={pertadexSegments} innerRadius={22} outerRadius={34} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
-                                    {pertadexSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
-                                  </Pie>
-                                </PieChart>
-                              </ResponsiveContainer>
-                              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                <span className="text-[10px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertadex)}</span>
-                                <span className="text-[6px] font-black text-slate-400 mt-0.5">L</span>
-                              </div>
-                            </div>
-                            <span className="text-[8px] font-black text-slate-400 mt-2 uppercase tracking-[0.1em]">PERTADEX</span>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-center pt-8 border-t border-slate-100 mt-6">
+                        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">TOTAL MOVE</h3>
+                        <div className="relative w-28 h-28">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie 
+                                data={rigMovesBySite.length > 0 ? rigMovesBySite : [{ value: 1, color: '#f1f5f9' }]} 
+                                innerRadius={30} 
+                                outerRadius={45} 
+                                dataKey="value" 
+                                isAnimationActive={false} 
+                                stroke="none"
+                              >
+                                {rigMovesBySite.length > 0 ? (
+                                  rigMovesBySite.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                  ))
+                                ) : (
+                                  <Cell fill="#f1f5f9" />
+                                )}
+                              </Pie>
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                            <span className="text-lg font-black text-slate-900">{dashboardStats.totalRigMoves}</span>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </ChartCard>
-                </div>
-              </div>
+                    </ChartCard>
 
-              {/* Sidebar: Activity Log */}
-              <div className="xl:col-span-2">
-                <div className="bg-white rounded-3xl shadow-sm border border-slate-100 h-full p-8 flex flex-col">
-                  <SectionHeader title="Daily Activity Log" subtitle="Detailed operational updates" icon={<ActivityIcon size={18} />} />
-                  <div className="flex-1 space-y-6 overflow-y-auto max-h-[1100px] custom-scrollbar pr-2 mt-4">
-                    {activities.length > 0 ? (
-                      activities.map((act, i) => (
-                        <div key={i} className="space-y-3">
-                          <div className="flex items-center gap-2 sticky top-0 bg-white/95 backdrop-blur-sm py-1.5 z-10 border-b border-slate-50">
-                            <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: sites.find(s => s.name === act.site)?.color || '#94a3b8' }}></div>
-                            <h4 className="text-sm font-bold text-slate-900 tracking-tight">{act.site}</h4>
-                            <span className="ml-auto text-[9px] font-bold text-slate-300 uppercase tracking-widest">{act.items.length} KEGIATAN</span>
-                          </div>
-                          <div className="space-y-3 px-1">
-                            {act.items.map((item, j) => (
-                              <div key={j} className="relative pl-5 py-1">
-                                <div className="absolute left-0 top-[12px] w-1.5 h-1.5 rounded-full bg-slate-200"></div>
-                                <div className="flex flex-col">
-                                  <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-0.5">{item.category}</span>
-                                  <p className="text-sm text-slate-600 leading-relaxed font-medium">{item.description}</p>
+                    <ChartCard title="Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-2">
+                      <div className="flex flex-col h-full">
+                        <div className="h-[210px] flex flex-col justify-between">
+                          <div className="grid grid-cols-2 gap-x-8 gap-y-4 px-1 w-full">
+                            {fuelData.map((data) => (
+                              <div key={data.name} className="flex flex-col">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <div className="w-1.5 h-3 rounded-full shrink-0" style={{ backgroundColor: sites.find(s => s.name === data.name)?.color || '#94a3b8' }}></div>
+                                  <span className="text-[11px] font-black text-slate-500 uppercase tracking-tight truncate">{data.name}</span>
+                                </div>
+                                <div className="flex gap-6 ml-3.5 tabular-nums">
+                                  <div className="flex flex-col">
+                                    <span className="text-slate-300 font-black uppercase text-[8px] mb-0.5">BIO</span>
+                                    <span className="text-xs font-black text-slate-900 leading-none">{formatNumber(data.biosolar)}</span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-slate-300 font-black uppercase text-[8px] mb-0.5">PERT</span>
+                                    <span className="text-xs font-black text-slate-900 leading-none">{formatNumber(data.pertalite)}</span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-slate-300 font-black uppercase text-[8px] mb-0.5">DEX</span>
+                                    <span className="text-xs font-black text-slate-900 leading-none">{formatNumber(data.pertadex)}</span>
+                                  </div>
                                 </div>
                               </div>
                             ))}
                           </div>
+                          <div className="flex items-center justify-center gap-4 bg-slate-50/50 py-2 rounded-xl mt-4">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">TOTAL</span>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-xl font-black text-indigo-600 tabular-nums">{formatNumber(dashboardStats.grandTotalFuel)}</span>
+                              <span className="text-[9px] text-slate-400 font-black uppercase">LTR</span>
+                            </div>
+                          </div>
                         </div>
-                      ))
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-48 opacity-40">
-                         <ActivityIcon size={40} className="text-slate-300 mb-2" />
-                         <p className="text-xs font-bold uppercase tracking-widest text-slate-400">No data available</p>
+
+                        <div className="flex flex-col py-5 border-t border-slate-100 mt-6 bg-slate-50/20 rounded-2xl px-2">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.25em] text-center mb-5">SUB-TOTAL FUEL</span>
+                          <div className="grid grid-cols-3 gap-1">
+                            <div className="flex flex-col items-center">
+                              <div className="w-20 h-20 relative">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart>
+                                    <Pie data={biosolarSegments} innerRadius={22} outerRadius={34} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                      {biosolarSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
+                                    </Pie>
+                                  </PieChart>
+                                </ResponsiveContainer>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                  <span className="text-[10px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalBiosolar)}</span>
+                                  <span className="text-[6px] font-black text-slate-400 mt-0.5">L</span>
+                                </div>
+                              </div>
+                              <span className="text-[8px] font-black text-slate-400 mt-2 uppercase tracking-[0.1em]">BIOSOLAR</span>
+                            </div>
+                            <div className="flex flex-col items-center">
+                              <div className="w-20 h-20 relative">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart>
+                                    <Pie data={pertaliteSegments} innerRadius={22} outerRadius={34} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                      {pertaliteSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
+                                    </Pie>
+                                  </PieChart>
+                                </ResponsiveContainer>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                  <span className="text-[10px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertalite)}</span>
+                                  <span className="text-[6px] font-black text-slate-400 mt-0.5">L</span>
+                                </div>
+                              </div>
+                              <span className="text-[8px] font-black text-slate-400 mt-2 uppercase tracking-[0.1em]">PERTALITE</span>
+                            </div>
+                            <div className="flex flex-col items-center">
+                              <div className="w-20 h-20 relative">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart>
+                                    <Pie data={pertadexSegments} innerRadius={22} outerRadius={34} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                      {pertadexSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
+                                    </Pie>
+                                  </PieChart>
+                                </ResponsiveContainer>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                  <span className="text-[10px] font-black text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertadex)}</span>
+                                  <span className="text-[6px] font-black text-slate-400 mt-0.5">L</span>
+                                </div>
+                              </div>
+                              <span className="text-[8px] font-black text-slate-400 mt-2 uppercase tracking-[0.1em]">PERTADEX</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    )}
+                    </ChartCard>
+                  </div>
+                </div>
+
+                {/* Sidebar: Activity Log */}
+                <div className="xl:col-span-2">
+                  <div className="bg-white rounded-3xl shadow-sm border border-slate-100 h-full p-8 flex flex-col">
+                    <SectionHeader title="Daily Activity Log" subtitle="Detailed operational updates" icon={<ActivityIcon size={18} />} />
+                    <div className="flex-1 space-y-6 overflow-y-auto max-h-[1100px] custom-scrollbar pr-2 mt-4">
+                      {activities.length > 0 ? (
+                        activities.map((act, i) => (
+                          <div key={i} className="space-y-3">
+                            <div className="flex items-center gap-2 sticky top-0 bg-white/95 backdrop-blur-sm py-1.5 z-10 border-b border-slate-50">
+                              <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: sites.find(s => s.name === act.site)?.color || '#94a3b8' }}></div>
+                              <h4 className="text-sm font-bold text-slate-900 tracking-tight">{act.site}</h4>
+                              <span className="ml-auto text-[9px] font-bold text-slate-300 uppercase tracking-widest">{act.items.length} KEGIATAN</span>
+                            </div>
+                            <div className="space-y-3 px-1">
+                              {act.items.map((item, j) => (
+                                <div key={j} className="relative pl-5 py-1">
+                                  <div className="absolute left-0 top-[12px] w-1.5 h-1.5 rounded-full bg-slate-200"></div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mb-0.5">{item.category}</span>
+                                    <p className="text-sm text-slate-600 leading-relaxed font-medium">{item.description}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-48 opacity-40">
+                           <ActivityIcon size={40} className="text-slate-300 mb-2" />
+                           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">No data available</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in zoom-in duration-500">
+                 <div className="w-32 h-32 bg-slate-100 rounded-full flex items-center justify-center mb-6 border border-slate-200 shadow-inner">
+                    <Database size={56} className="text-slate-300" />
+                 </div>
+                 <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Data Not Found</h2>
+                 <p className="text-slate-500 font-medium text-center max-w-md mb-8">
+                    There is no data report for <span className="text-indigo-600 font-bold">{formattedSelectedDate}</span>. 
+                 </p>
+                 <button onClick={() => setActiveView('input')} className="flex items-center gap-2 px-8 h-12 bg-indigo-600 text-white rounded-xl shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-black text-sm uppercase tracking-widest active:scale-95">
+                    <PenLine size={18} />
+                    <span>Update Data Now</span>
+                 </button>
+              </div>
+            )
           ) : (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in zoom-in duration-500">
-               <div className="w-32 h-32 bg-slate-100 rounded-full flex items-center justify-center mb-6 border border-slate-200 shadow-inner">
-                  <Database size={56} className="text-slate-300" />
-               </div>
-               <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Data Not Found</h2>
-               <p className="text-slate-500 font-medium text-center max-w-md mb-8">
-                  There is no data report for <span className="text-indigo-600 font-bold">{formattedSelectedDate}</span>. 
-               </p>
-               <button onClick={() => setActiveView('input')} className="flex items-center gap-2 px-8 h-12 bg-indigo-600 text-white rounded-xl shadow-xl shadow-indigo-600/20 hover:bg-indigo-700 transition-all font-black text-sm uppercase tracking-widest active:scale-95">
-                  <PenLine size={18} />
-                  <span>Update Data Now</span>
-               </button>
-            </div>
-          )
-        ) : (
-          <div className="animate-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-10">
-              <div className="bg-slate-900 p-6 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400">
-                    <PenLine size={24} />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-black text-white">Operational Data Input</h2>
-                    <p className="text-slate-400 text-xs font-medium uppercase tracking-widest">Update data for {formattedSelectedDate}</p>
+            <div className="animate-in slide-in-from-bottom-4 duration-500">
+              <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-10">
+                <div className="bg-slate-900 p-6 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400">
+                      <PenLine size={24} />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-black text-white">Operational Data Input</h2>
+                      <p className="text-slate-400 text-xs font-medium uppercase tracking-widest">Update data for {formattedSelectedDate}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[1400px]">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100">
-                      <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest w-40">Site Details</th>
-                      <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center border-l border-slate-100 w-[380px]">Warehouse Value (IDR)</th>
-                      <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center border-l border-slate-100 w-80">Fuel Usage (L)</th>
-                      <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center border-l border-slate-100 w-32">POB</th>
-                      <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center border-l border-slate-100">Rig Logistics</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {['PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG', 'ZONA 9'].map((siteName) => {
-                      const s = localSites.find(ls => ls.name === siteName) || { name: siteName, stock: 0, issued: 0, received: 0, pob: 0, color: '#ccc' };
-                      const f = localFuel.find(lf => lf.name === siteName) || { name: siteName, biosolar: 0, pertalite: 0, pertadex: 0 };
-                      const a = localActs.find(la => la.site === siteName) || { site: siteName, items: [] };
-                      const siteRigs = localRigMoves.filter(rm => rm.site === siteName);
-                      const saved = isSiteSaved(siteName);
-                      return (
-                        <React.Fragment key={siteName}>
-                          <tr className="group hover:bg-slate-50/50 transition-colors">
-                            <td className="p-6 align-top">
-                              <div className="flex items-center gap-3 mb-2">
-                                <div className="w-2 h-6 rounded-full" style={{ backgroundColor: s.color }}></div>
-                                <h3 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2">
-                                  {siteName}
-                                  {saved && <CheckCircle2 size={14} className="text-emerald-500" />}
-                                </h3>
-                              </div>
-                              <input type="text" value={s.color} onChange={e => updateLocalSite(siteName, 'color', e.target.value)} className="px-2 py-1 bg-slate-100 border-none rounded text-[9px] font-bold text-slate-500 outline-none w-20 uppercase" />
-                            </td>
-                            <td className="p-6 border-l border-slate-100 align-top">
-                              <div className="space-y-4">
-                                <div className="space-y-1">
-                                  <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Total Stock Asset</label>
-                                  <input type="text" value={s.stock === 0 ? '0' : formatNumber(s.stock)} onChange={e => {
-                                      const raw = e.target.value.replace(/\D/g, '');
-                                      updateLocalSite(siteName, 'stock', raw === '' ? 0 : Number(raw));
-                                    }} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none text-sm focus:ring-2 focus:ring-indigo-500/20" />
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[1400px]">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest w-40">Site Details</th>
+                        <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center border-l border-slate-100 w-[380px]">Warehouse Value (IDR)</th>
+                        <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center border-l border-slate-100 w-80">Fuel Usage (L)</th>
+                        <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center border-l border-slate-100 w-32">POB</th>
+                        <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center border-l border-slate-100">Rig Logistics</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {['PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG', 'ZONA 9'].map((siteName) => {
+                        const s = localSites.find(ls => ls.name === siteName) || { name: siteName, stock: 0, issued: 0, received: 0, pob: 0, color: '#ccc' };
+                        const f = localFuel.find(lf => lf.name === siteName) || { name: siteName, biosolar: 0, pertalite: 0, pertadex: 0 };
+                        const a = localActs.find(la => la.site === siteName) || { site: siteName, items: [] };
+                        const siteRigs = localRigMoves.filter(rm => rm.site === siteName);
+                        const saved = isSiteSaved(siteName);
+                        return (
+                          <React.Fragment key={siteName}>
+                            <tr className="group hover:bg-slate-50/50 transition-colors">
+                              <td className="p-6 align-top">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <div className="w-2 h-6 rounded-full" style={{ backgroundColor: s.color }}></div>
+                                  <h3 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2">
+                                    {siteName}
+                                    {saved && <CheckCircle2 size={14} className="text-emerald-500" />}
+                                  </h3>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
+                                <input type="text" value={s.color} onChange={e => updateLocalSite(siteName, 'color', e.target.value)} className="px-2 py-1 bg-slate-100 border-none rounded text-[9px] font-bold text-slate-500 outline-none w-20 uppercase" />
+                              </td>
+                              <td className="p-6 border-l border-slate-100 align-top">
+                                <div className="space-y-4">
                                   <div className="space-y-1">
-                                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Daily Issue</label>
-                                    <input type="text" value={s.issued === 0 ? '0' : formatNumber(s.issued)} onChange={e => {
+                                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Total Stock Asset</label>
+                                    <input type="text" value={s.stock === 0 ? '0' : formatNumber(s.stock)} onChange={e => {
                                         const raw = e.target.value.replace(/\D/g, '');
-                                        updateLocalSite(siteName, 'issued', raw === '' ? 0 : Number(raw));
-                                      }} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-emerald-600 outline-none text-sm" />
+                                        updateLocalSite(siteName, 'stock', raw === '' ? 0 : Number(raw));
+                                      }} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none text-sm focus:ring-2 focus:ring-indigo-500/20" />
                                   </div>
-                                  <div className="space-y-1">
-                                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Daily Receive</label>
-                                    <input type="text" value={s.received === 0 ? '0' : formatNumber(s.received)} onChange={e => {
-                                        const raw = e.target.value.replace(/\D/g, '');
-                                        updateLocalSite(siteName, 'received', raw === '' ? 0 : Number(raw));
-                                      }} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-rose-600 outline-none text-sm" />
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Daily Issue</label>
+                                      <input type="text" value={s.issued === 0 ? '0' : formatNumber(s.issued)} onChange={e => {
+                                          const raw = e.target.value.replace(/\D/g, '');
+                                          updateLocalSite(siteName, 'issued', raw === '' ? 0 : Number(raw));
+                                        }} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-emerald-600 outline-none text-sm" />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Daily Receive</label>
+                                      <input type="text" value={s.received === 0 ? '0' : formatNumber(s.received)} onChange={e => {
+                                          const raw = e.target.value.replace(/\D/g, '');
+                                          updateLocalSite(siteName, 'received', raw === '' ? 0 : Number(raw));
+                                        }} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-rose-600 outline-none text-sm" />
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </td>
-                            <td className="p-6 border-l border-slate-100 align-top">
-                              <div className="grid grid-cols-1 gap-4">
+                              </td>
+                              <td className="p-6 border-l border-slate-100 align-top">
+                                <div className="grid grid-cols-1 gap-4">
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Biosolar</label>
+                                    <input type="number" value={f.biosolar} onChange={e => updateLocalFuel(siteName, 'biosolar', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none text-sm" />
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Pertalite</label>
+                                      <input type="number" value={f.pertalite} onChange={e => updateLocalFuel(siteName, 'pertalite', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none text-sm" />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Pertadex</label>
+                                      <input type="number" value={f.pertadex} onChange={e => updateLocalFuel(siteName, 'pertadex', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none text-sm" />
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-6 border-l border-slate-100 align-top">
                                 <div className="space-y-1">
-                                  <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Biosolar</label>
-                                  <input type="number" value={f.biosolar} onChange={e => updateLocalFuel(siteName, 'biosolar', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none text-sm" />
+                                  <label className="text-[9px] font-black text-slate-400 uppercase text-center block">Count</label>
+                                  <input type="number" value={s.pob} onChange={e => updateLocalSite(siteName, 'pob', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-black text-slate-900 outline-none text-sm text-center" />
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                  <div className="space-y-1">
-                                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Pertalite</label>
-                                    <input type="number" value={f.pertalite} onChange={e => updateLocalFuel(siteName, 'pertalite', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none text-sm" />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Pertadex</label>
-                                    <input type="number" value={f.pertadex} onChange={e => updateLocalFuel(siteName, 'pertadex', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none text-sm" />
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="p-6 border-l border-slate-100 align-top">
-                              <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-400 uppercase text-center block">Count</label>
-                                <input type="number" value={s.pob} onChange={e => updateLocalSite(siteName, 'pob', Number(e.target.value))} onFocus={handleNumericFocus} className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-black text-slate-900 outline-none text-sm text-center" />
-                              </div>
-                            </td>
-                            <td className="p-6 border-l border-slate-100 align-top">
-                              <div className="space-y-3">
-                                {siteRigs.map((rm, idx) => (
-                                  <div key={idx} className="flex items-center gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-white">
-                                    <div className="grid grid-cols-3 gap-2 flex-1">
-                                      <input type="text" value={rm.rig_name} onChange={e => updateLocalRigMove(siteName, idx, 'rig_name', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="Rig" />
-                                      <input type="text" value={rm.from_loc} onChange={e => updateLocalRigMove(siteName, idx, 'from_loc', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="From" />
-                                      <input type="text" value={rm.to_loc} onChange={e => updateLocalRigMove(siteName, idx, 'to_loc', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="To" />
-                                    </div>
-                                    <button onClick={() => deleteLocalRigMove(siteName, idx)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
-                                      <Trash2 size={14} />
-                                    </button>
-                                  </div>
-                                ))}
-                                <button onClick={() => addLocalRigMove(siteName)} className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-[10px] font-bold text-slate-400 hover:bg-slate-100 hover:text-indigo-600 transition-all">
-                                  <Plus size={14} /> Add Rig Move
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                          <tr className="border-b border-slate-100">
-                            <td colSpan={5} className="p-0">
-                                <div className="bg-slate-50/50 p-6 flex flex-col gap-4">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <ActivityIcon size={14} className="text-slate-400" />
-                                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Activity List - {siteName}</span>
-                                    </div>
-                                    <button onClick={() => addLocalActivity(siteName)} className="flex items-center gap-1.5 px-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm">
-                                      <Plus size={12} /> Add Activity
-                                    </button>
-                                  </div>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {a.items.map((item, idx) => (
-                                      <div key={idx} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col gap-3 relative group/log">
-                                        <button onClick={() => deleteLocalActivity(siteName, idx)} className="absolute top-2 right-2 p-1.5 text-slate-200 hover:text-rose-500 transition-all opacity-0 group-hover/log:opacity-100"><Trash2 size={12} /></button>
-                                        <input type="text" value={item.category} onChange={e => updateLocalActivity(siteName, idx, 'category', e.target.value)} className="px-2 py-1 bg-slate-50 border-none rounded text-[9px] font-black text-indigo-600 outline-none w-fit uppercase" placeholder="CATEGORY" />
-                                        <textarea value={item.description} onChange={e => updateLocalActivity(siteName, idx, 'description', e.target.value)} rows={2} className="w-full px-3 py-2 bg-slate-50 border-none rounded-lg text-sm font-medium text-slate-600 outline-none resize-none focus:bg-white transition-all" placeholder="Enter activity details..." />
+                              </td>
+                              <td className="p-6 border-l border-slate-100 align-top">
+                                <div className="space-y-3">
+                                  {siteRigs.map((rm, idx) => (
+                                    <div key={idx} className="flex items-center gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm transition-all hover:bg-white">
+                                      <div className="grid grid-cols-3 gap-2 flex-1">
+                                        <input type="text" value={rm.rig_name} onChange={e => updateLocalRigMove(siteName, idx, 'rig_name', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="Rig" />
+                                        <input type="text" value={rm.from_loc} onChange={e => updateLocalRigMove(siteName, idx, 'from_loc', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="From" />
+                                        <input type="text" value={rm.to_loc} onChange={e => updateLocalRigMove(siteName, idx, 'to_loc', e.target.value)} className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none" placeholder="To" />
                                       </div>
-                                    ))}
-                                  </div>
+                                      <button onClick={() => deleteLocalRigMove(siteName, idx)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  <button onClick={() => addLocalRigMove(siteName)} className="flex items-center justify-center gap-2 w-full py-2 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-[10px] font-bold text-slate-400 hover:bg-slate-100 hover:text-indigo-600 transition-all">
+                                    <Plus size={14} /> Add Rig Move
+                                  </button>
                                 </div>
-                            </td>
-                          </tr>
-                        </React.Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                              </td>
+                            </tr>
+                            <tr className="border-b border-slate-100">
+                              <td colSpan={5} className="p-0">
+                                  <div className="bg-slate-50/50 p-6 flex flex-col gap-4">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <ActivityIcon size={14} className="text-slate-400" />
+                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Activity List - {siteName}</span>
+                                      </div>
+                                      <button onClick={() => addLocalActivity(siteName)} className="flex items-center gap-1.5 px-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm">
+                                        <Plus size={12} /> Add Activity
+                                      </button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      {a.items.map((item, idx) => (
+                                        <div key={idx} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col gap-3 relative group/log">
+                                          <button onClick={() => deleteLocalActivity(siteName, idx)} className="absolute top-2 right-2 p-1.5 text-slate-200 hover:text-rose-500 transition-all opacity-0 group-hover/log:opacity-100"><Trash2 size={12} /></button>
+                                          <input type="text" value={item.category} onChange={e => updateLocalActivity(siteName, idx, 'category', e.target.value)} className="px-2 py-1 bg-slate-50 border-none rounded text-[9px] font-black text-indigo-600 outline-none w-fit uppercase" placeholder="CATEGORY" />
+                                          <textarea value={item.description} onChange={e => updateLocalActivity(siteName, idx, 'description', e.target.value)} rows={2} className="w-full px-3 py-2 bg-slate-50 border-none rounded-lg text-sm font-medium text-slate-600 outline-none resize-none focus:bg-white transition-all" placeholder="Enter activity details..." />
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                              </td>
+                            </tr>
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </main>
       
       <style>{`
