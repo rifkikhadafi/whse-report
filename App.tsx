@@ -100,6 +100,8 @@ const App: React.FC = () => {
   const [fuelData, setFuelData] = useState<FuelData[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [rigMoves, setRigMoves] = useState<RigMove[]>([]);
+  
+  const [prevDaySites, setPrevDaySites] = useState<SiteData[]>([]);
 
   const [localSites, setLocalSites] = useState<SiteData[]>([]);
   const [localFuel, setLocalFuel] = useState<FuelData[]>([]);
@@ -111,11 +113,16 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [sRes, fRes, aRes, rRes] = await Promise.all([
+      const d = new Date(date);
+      d.setDate(d.getDate() - 1);
+      const prevDateStr = d.toISOString().split('T')[0];
+
+      const [sRes, fRes, aRes, rRes, prevSRes] = await Promise.all([
         supabase.from('sites').select('*').eq('date', date).order('name'),
         supabase.from('fuel_data').select('*').eq('date', date).order('name'),
         supabase.from('activities').select('*').eq('date', date).order('site'),
-        supabase.from('rig_moves').select('*').eq('date', date).order('site')
+        supabase.from('rig_moves').select('*').eq('date', date).order('site'),
+        supabase.from('sites').select('*').eq('date', prevDateStr)
       ]);
 
       if (sRes.error || fRes.error || aRes.error || rRes.error) {
@@ -130,6 +137,12 @@ const App: React.FC = () => {
       } else {
         setSites([]);
         setLocalSites(initialSites.map(s => ({ ...s, issued: 0, received: 0, stock: 0, pob: 0 })));
+      }
+      
+      if (prevSRes.data && prevSRes.data.length > 0) {
+        setPrevDaySites(prevSRes.data);
+      } else {
+        setPrevDaySites([]);
       }
       
       if (fRes.data && fRes.data.length > 0) {
@@ -281,7 +294,8 @@ const App: React.FC = () => {
 
   const dashboardStats = useMemo(() => {
     if (sites.length === 0) return null;
-    return {
+    
+    const current = {
       totalStockValue: sites.reduce((acc, curr) => acc + curr.stock, 0),
       totalGoodIssue: sites.reduce((acc, curr) => acc + (curr.issued || 0), 0),
       totalGoodReceive: sites.reduce((acc, curr) => acc + (curr.received || 0), 0),
@@ -292,7 +306,30 @@ const App: React.FC = () => {
       grandTotalFuel: fuelData.reduce((acc, curr) => acc + (curr.biosolar || 0) + (curr.pertalite || 0) + (curr.pertadex || 0), 0),
       totalRigMoves: rigMoves.length
     };
-  }, [sites, fuelData, rigMoves]);
+
+    const previousTotalStockValue = prevDaySites.length > 0 ? prevDaySites.reduce((acc, curr) => acc + curr.stock, 0) : 0;
+
+    const calcTrendFromStock = (curr: number, prevStock: number) => {
+      if (prevStock === 0) return '0%';
+      const pct = (curr / prevStock) * 100;
+      return `${pct.toFixed(2)}%`;
+    };
+
+    const calcStockTrend = (curr: number, prev: number) => {
+      if (prev === 0) return '0%';
+      const diff = ((curr - prev) / prev) * 100;
+      return `${diff >= 0 ? '+' : ''}${diff.toFixed(2)}%`;
+    };
+
+    return {
+      ...current,
+      trends: {
+        stock: calcStockTrend(current.totalStockValue, previousTotalStockValue),
+        issue: calcTrendFromStock(current.totalGoodIssue, previousTotalStockValue),
+        receive: calcTrendFromStock(current.totalGoodReceive, previousTotalStockValue)
+      }
+    };
+  }, [sites, fuelData, rigMoves, prevDaySites]);
 
   const handleDownloadPDF = async () => {
     if (!dashboardRef.current) return;
@@ -492,9 +529,27 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-in fade-in duration-700">
                 <div className="xl:col-span-3 space-y-8">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <StatCard title="Total Good Issue" value={formatCurrency(dashboardStats.totalGoodIssue)} icon={<ArrowUpRight size={24} className="text-emerald-500" />} trend="-1.8%" trendClassName="bg-emerald-50 text-emerald-600" />
-                    <StatCard title="Total Good Receive" value={formatCurrency(dashboardStats.totalGoodReceive)} icon={<ArrowDownLeft size={24} className="text-rose-500" />} trend="+0.5%" trendClassName="bg-rose-50 text-rose-600" />
-                    <StatCard title="Total Stock Value" value={formatCurrency(dashboardStats.totalStockValue)} icon={<Package size={24} className="text-slate-600" />} trend="+2.4%" trendClassName="bg-indigo-50 text-indigo-600" />
+                    <StatCard 
+                      title="Total Good Issue" 
+                      value={formatCurrency(dashboardStats.totalGoodIssue)} 
+                      icon={<ArrowUpRight size={24} className="text-emerald-500" />} 
+                      trend={dashboardStats.trends.issue} 
+                      trendClassName="bg-indigo-50 text-indigo-600"
+                    />
+                    <StatCard 
+                      title="Total Good Receive" 
+                      value={formatCurrency(dashboardStats.totalGoodReceive)} 
+                      icon={<ArrowDownLeft size={24} className="text-rose-500" />} 
+                      trend={dashboardStats.trends.receive} 
+                      trendClassName="bg-indigo-50 text-indigo-600" 
+                    />
+                    <StatCard 
+                      title="Total Stock Value" 
+                      value={formatCurrency(dashboardStats.totalStockValue)} 
+                      icon={<Package size={24} className="text-slate-600" />} 
+                      trend={dashboardStats.trends.stock} 
+                      trendClassName={dashboardStats.trends.stock.startsWith('+') ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'} 
+                    />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <ChartCard title="Good Issue & Receive" subtitle="All Field Zona 9" icon={<ArrowLeftRight size={18} />}>
@@ -526,7 +581,7 @@ const App: React.FC = () => {
                               <Pie 
                                 data={sites.filter(s => s.stock > 0)} 
                                 innerRadius={45} 
-                                outerRadius={70} 
+                                outerRadius={60} 
                                 paddingAngle={4} 
                                 dataKey="stock" 
                                 nameKey="name" 
@@ -557,7 +612,7 @@ const App: React.FC = () => {
                   
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                     <ChartCard title="POB Status" icon={<Users size={18} />} className="md:col-span-1">
-                      <div className="h-[210px] flex flex-col space-y-3 pr-1 overflow-y-auto custom-scrollbar">
+                      <div className="h-[180px] flex flex-col space-y-3 pr-1 overflow-y-auto custom-scrollbar">
                         {sites.map((site) => (
                           <div key={site.name} className="flex flex-col">
                             <div className="flex items-center gap-2 mb-0.5">
@@ -568,25 +623,25 @@ const App: React.FC = () => {
                           </div>
                         ))}
                       </div>
-                      <div className="flex flex-col items-center pt-8 border-t border-slate-100 mt-6">
+                      <div className="flex flex-col items-center pt-6 border-t border-slate-100 mt-4 overflow-visible">
                         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total POB</h3>
-                        <div className="relative w-28 h-28">
+                        <div className="relative w-28 h-28 overflow-visible">
                           <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie data={sites} innerRadius={30} outerRadius={45} paddingAngle={2} dataKey="pob" isAnimationActive={false} stroke="none">
+                            <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                              <Pie data={sites} innerRadius={28} outerRadius={38} paddingAngle={2} dataKey="pob" isAnimationActive={false} stroke="none">
                                 {sites.map((entry, index) => <Cell key={index} fill={entry.color || '#cbd5e1'} />)}
                               </Pie>
                             </PieChart>
                           </ResponsiveContainer>
                           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                            <span className="text-lg font-black text-slate-900">{dashboardStats.totalPOB}</span>
+                            <span className="text-lg font-black text-slate-900 leading-none">{dashboardStats.totalPOB}</span>
                           </div>
                         </div>
                       </div>
                     </ChartCard>
 
                     <ChartCard title="Support Rig Move" icon={<Truck size={18} />} className="md:col-span-1">
-                      <div className="h-[210px] space-y-3 pr-1 overflow-y-auto custom-scrollbar">
+                      <div className="h-[180px] space-y-3 pr-1 overflow-y-auto custom-scrollbar">
                         {rigMoves.length > 0 ? (
                           rigMoves.map((rm, idx) => (
                             <div key={idx} className="flex flex-col border-b border-slate-50 pb-2 last:border-0 mb-2">
@@ -610,15 +665,15 @@ const App: React.FC = () => {
                           </div>
                         )}
                       </div>
-                      <div className="flex flex-col items-center pt-8 border-t border-slate-100 mt-6">
+                      <div className="flex flex-col items-center pt-6 border-t border-slate-100 mt-4 overflow-visible">
                         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">TOTAL MOVE</h3>
-                        <div className="relative w-28 h-28">
+                        <div className="relative w-28 h-28 overflow-visible">
                           <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
+                            <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
                               <Pie 
                                 data={rigMovesBySite.length > 0 ? rigMovesBySite : [{ value: 1, color: '#f1f5f9' }]} 
-                                innerRadius={30} 
-                                outerRadius={45} 
+                                innerRadius={28} 
+                                outerRadius={38} 
                                 dataKey="value" 
                                 isAnimationActive={false} 
                                 stroke="none"
@@ -634,7 +689,7 @@ const App: React.FC = () => {
                             </PieChart>
                           </ResponsiveContainer>
                           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                            <span className="text-lg font-black text-slate-900">{dashboardStats.totalRigMoves}</span>
+                            <span className="text-lg font-black text-slate-900 leading-none">{dashboardStats.totalRigMoves}</span>
                           </div>
                         </div>
                       </div>
@@ -642,7 +697,7 @@ const App: React.FC = () => {
 
                     <ChartCard title="Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-2">
                       <div className="flex flex-col h-full">
-                        <div className="h-[210px] flex flex-col justify-between overflow-y-auto custom-scrollbar pr-1">
+                        <div className="h-[180px] flex flex-col justify-between overflow-y-auto custom-scrollbar pr-1">
                           <div className="grid grid-cols-2 gap-x-8 gap-y-4 px-1 w-full">
                             {fuelData.map((data) => (
                               <div key={data.name} className="flex flex-col">
@@ -676,56 +731,53 @@ const App: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="flex flex-col py-5 border-t border-slate-100 mt-6 px-2">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center mb-5">SUB-TOTAL FUEL</span>
+                        <div className="flex flex-col py-4 border-t border-slate-100 mt-6 px-2">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center mb-4">SUB-TOTAL FUEL</span>
                           <div className="grid grid-cols-3 gap-1">
                             <div className="flex flex-col items-center">
-                              <div className="w-20 h-20 relative">
+                              <div className="w-16 h-16 relative overflow-visible">
                                 <ResponsiveContainer width="100%" height="100%">
-                                  <PieChart>
-                                    <Pie data={biosolarSegments} innerRadius={22} outerRadius={34} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                  <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                                    <Pie data={biosolarSegments} innerRadius={18} outerRadius={26} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
                                       {biosolarSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
                                     </Pie>
                                   </PieChart>
                                 </ResponsiveContainer>
                                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                  <span className="text-[10px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalBiosolar)}</span>
-                                  <span className="text-[6px] font-bold text-slate-400 mt-0.5">L</span>
+                                  <span className="text-[9px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalBiosolar)}</span>
                                 </div>
                               </div>
-                              <span className="text-[8px] font-bold text-slate-400 mt-2 uppercase">BIOSOLAR</span>
+                              <span className="text-[7px] font-bold text-slate-400 mt-1 uppercase">BIOSOLAR</span>
                             </div>
                             <div className="flex flex-col items-center">
-                              <div className="w-20 h-20 relative">
+                              <div className="w-16 h-16 relative overflow-visible">
                                 <ResponsiveContainer width="100%" height="100%">
-                                  <PieChart>
-                                    <Pie data={pertaliteSegments} innerRadius={22} outerRadius={34} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                  <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                                    <Pie data={pertaliteSegments} innerRadius={18} outerRadius={26} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
                                       {pertaliteSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
                                     </Pie>
                                   </PieChart>
                                 </ResponsiveContainer>
                                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                  <span className="text-[10px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertalite)}</span>
-                                  <span className="text-[6px] font-bold text-slate-400 mt-0.5">L</span>
+                                  <span className="text-[9px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertalite)}</span>
                                 </div>
                               </div>
-                              <span className="text-[8px] font-bold text-slate-400 mt-2 uppercase">PERTALITE</span>
+                              <span className="text-[7px] font-bold text-slate-400 mt-1 uppercase">PERTALITE</span>
                             </div>
                             <div className="flex flex-col items-center">
-                              <div className="w-20 h-20 relative">
+                              <div className="w-16 h-16 relative overflow-visible">
                                 <ResponsiveContainer width="100%" height="100%">
-                                  <PieChart>
-                                    <Pie data={pertadexSegments} innerRadius={22} outerRadius={34} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
+                                  <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                                    <Pie data={pertadexSegments} innerRadius={18} outerRadius={26} paddingAngle={2} dataKey="value" isAnimationActive={false} stroke="none">
                                       {pertadexSegments.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
                                     </Pie>
                                   </PieChart>
                                 </ResponsiveContainer>
                                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                  <span className="text-[10px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertadex)}</span>
-                                  <span className="text-[6px] font-bold text-slate-400 mt-0.5">L</span>
+                                  <span className="text-[9px] font-bold text-slate-900 leading-none">{formatNumber(dashboardStats.totalPertadex)}</span>
                                 </div>
                               </div>
-                              <span className="text-[8px] font-bold text-slate-400 mt-2 uppercase">PERTADEX</span>
+                              <span className="text-[7px] font-bold text-slate-400 mt-1 uppercase">PERTADEX</span>
                             </div>
                           </div>
                         </div>
@@ -945,6 +997,7 @@ const App: React.FC = () => {
         input[type="date"]::-webkit-calendar-picker-indicator {
           cursor: pointer;
         }
+        .recharts-pie-sector:focus { outline: none; }
       `}</style>
     </div>
   );
