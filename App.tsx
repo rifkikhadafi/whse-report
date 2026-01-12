@@ -28,7 +28,8 @@ import {
   Edit3,
   Server,
   Download,
-  HardDrive
+  HardDrive,
+  GripVertical
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { SiteData, FuelData, Activity, RigMove } from './types';
@@ -246,6 +247,19 @@ const App: React.FC = () => {
     'PHSS': '', 'SANGASANGA': '', 'SANGATTA': '', 'TANJUNG': '', 'ZONA 9': ''
   });
 
+  // Layout states for drag and drop
+  const [weeklyLayout, setWeeklyLayout] = useState<{col1: string[], col2: string[]}>({
+    col1: ['ZONA 9'],
+    col2: ['PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG']
+  });
+
+  const [dailyLayout, setDailyLayout] = useState<{col1: string[], col2: string[]}>({
+    col1: ['ZONA 9'],
+    col2: ['PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG']
+  });
+
+  const [draggedItem, setDraggedItem] = useState<string | null>(null);
+
   const [dailyUpdates, setDailyUpdates] = useState<Record<string, string>>({
     'PHSS': '', 'SANGASANGA': '', 'SANGATTA': '', 'TANJUNG': '', 'ZONA 9': ''
   });
@@ -258,13 +272,9 @@ const App: React.FC = () => {
   // Function to fetch ACTUAL database size from Supabase
   const refreshDbUsage = async () => {
     try {
-      // 1. Coba panggil RPC get_db_size_bytes (Jika sudah dibuat via SQL Editor)
       const { data: bytes, error: rpcError } = await supabase.rpc('get_db_size_bytes');
-      
       let actualBytes = bytes;
-
       if (rpcError || !bytes) {
-        // Fallback: Estimasi kasar jika RPC belum dibuat
         const [{ count: sCount }, { count: fCount }, { count: aCount }, { count: rCount }] = await Promise.all([
           supabase.from('sites').select('*', { count: 'exact', head: true }),
           supabase.from('fuel_data').select('*', { count: 'exact', head: true }),
@@ -272,10 +282,8 @@ const App: React.FC = () => {
           supabase.from('rig_moves').select('*', { count: 'exact', head: true })
         ]);
         const totalRows = (sCount || 0) + (fCount || 0) + (aCount || 0) + (rCount || 0);
-        // Base size ~25MB (overhead) + 1KB per row
         actualBytes = (25.52 * 1024 * 1024) + (totalRows * 1024);
       }
-
       const mb = actualBytes / (1024 * 1024);
       const limitMB = 500;
       setDbSizeMB(mb);
@@ -672,8 +680,80 @@ const App: React.FC = () => {
     };
   }, [weeklySites, weeklyFuel, weeklyRigs, weeklyFirstDaySites, weeklyLastDaySites]);
 
+  // Drag and Drop Handlers
+  const handleDragStart = (e: React.DragEvent, site: string) => {
+    if (isExportMode) return;
+    setDraggedItem(site);
+    e.dataTransfer.setData('siteName', site);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, targetCol: 'col1' | 'col2', viewType: 'weekly' | 'daily') => {
+    e.preventDefault();
+    const site = e.dataTransfer.getData('siteName');
+    if (!site) return;
+
+    if (viewType === 'weekly') {
+      setWeeklyLayout(prev => {
+        const newCol1 = prev.col1.filter(s => s !== site);
+        const newCol2 = prev.col2.filter(s => s !== site);
+        if (targetCol === 'col1') newCol1.push(site);
+        else newCol2.push(site);
+        return { col1: newCol1, col2: newCol2 };
+      });
+    } else {
+      setDailyLayout(prev => {
+        const newCol1 = prev.col1.filter(s => s !== site);
+        const newCol2 = prev.col2.filter(s => s !== site);
+        if (targetCol === 'col1') newCol1.push(site);
+        else newCol2.push(site);
+        return { col1: newCol1, col2: newCol2 };
+      });
+    }
+    setDraggedItem(null);
+  };
+
+  const renderDraggableCard = (siteName: string, viewType: 'weekly' | 'daily') => {
+    const isWeekly = viewType === 'weekly';
+    const value = isWeekly ? weeklyUpdates[siteName] : dailyUpdates[siteName];
+    const color = (isWeekly && weeklyLastDaySites.length > 0 ? weeklyLastDaySites : sites).find(s => s.name === siteName)?.color;
+
+    return (
+      <div 
+        key={siteName}
+        draggable={!isExportMode}
+        onDragStart={(e) => handleDragStart(e, siteName)}
+        className={`group relative space-y-3 p-4 bg-slate-50/50 rounded-xl border border-slate-100 transition-all ${draggedItem === siteName ? 'opacity-40 border-dashed border-indigo-400 scale-95' : 'hover:shadow-md'}`}
+      >
+        {!isExportMode && (
+          <div className="absolute top-4 right-3 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity">
+            <GripVertical size={14} className="text-slate-400" />
+          </div>
+        )}
+        <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+          <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: color }}></div>
+          <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight">{siteName}</h4>
+        </div>
+        <AutoResizeTextarea 
+          value={value || ''} 
+          onChange={(e) => {
+            if (isWeekly) setWeeklyUpdates({...weeklyUpdates, [siteName]: e.target.value});
+            else setDailyUpdates({...dailyUpdates, [siteName]: e.target.value});
+          }} 
+          placeholder={`${isWeekly ? 'Catatan mingguan' : 'Log harian'} ${siteName}...`} 
+          className="w-full bg-transparent border-none text-sm font-semibold text-slate-700 resize-none outline-none p-0 h-auto" 
+          readOnly={isExportMode} 
+        />
+      </div>
+    );
+  };
+
   const formattedSelectedDate = new Date(selectedDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-  const sortedSiteNames = ['ZONA 9', 'PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG'];
 
   return (
     <div className={`min-h-screen flex bg-slate-50 font-inter text-slate-900 ${isExportMode ? 'export-view' : 'overflow-hidden'}`}>
@@ -713,7 +793,6 @@ const App: React.FC = () => {
               </button>
             </nav>
             
-            {/* Database Usage Monitor (Updated with Actual MB) */}
             <div className="w-full px-3 py-6 mt-auto flex flex-col items-center gap-3 border-t border-slate-800/50">
               <div className="flex flex-col items-center gap-1">
                 <Database size={16} className="text-slate-500" />
@@ -724,7 +803,6 @@ const App: React.FC = () => {
                   className={`w-full transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(99,102,241,0.5)] ${dbUsagePercent > 80 ? 'bg-rose-500' : dbUsagePercent > 50 ? 'bg-amber-500' : 'bg-indigo-500'}`}
                   style={{ height: `${Math.min(dbUsagePercent, 100)}%` }}
                 />
-                {/* Tooltip on hover */}
                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 pointer-events-none">
                    <span className="text-[8px] font-black text-white">500MB MAX</span>
                 </div>
@@ -819,7 +897,6 @@ const App: React.FC = () => {
                   <button onClick={() => setActiveInputTab('fuel')} className={`flex-1 py-4 px-6 text-xs font-black uppercase tracking-widest transition-all ${activeInputTab === 'fuel' ? 'bg-white text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:bg-slate-100'}`}>Fuel</button>
                   <button onClick={() => setActiveInputTab('rigmoves')} className={`flex-1 py-4 px-6 text-xs font-black uppercase tracking-widest transition-all ${activeInputTab === 'rigmoves' ? 'bg-white text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:bg-slate-100'}`}>Rig Moves</button>
                 </div>
-
                 <div className="p-8">
                   {activeInputTab === 'sites' && (
                     <div className="space-y-6">
@@ -839,7 +916,6 @@ const App: React.FC = () => {
                       ))}
                     </div>
                   )}
-
                   {activeInputTab === 'fuel' && (
                     <div className="space-y-6">
                       {localFuel.map((fuel) => (
@@ -857,7 +933,6 @@ const App: React.FC = () => {
                       ))}
                     </div>
                   )}
-
                   {activeInputTab === 'rigmoves' && (
                     <div className="space-y-6">
                       <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -897,25 +972,15 @@ const App: React.FC = () => {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                         <StatCard title="Weekly Good Issue" value={formatCurrency(weeklyStats!.totalIssue)} icon={<ArrowUpRight size={24} className="text-emerald-500" />} />
                         <StatCard title="Weekly Good Receive" value={formatCurrency(weeklyStats!.totalReceive)} icon={<ArrowDownLeft size={24} className="text-rose-500" />} />
-                        <StatCard 
-                          title="Last Stock Value" 
-                          value={formatCurrency(weeklyStats!.lastDayStock)} 
-                          icon={<Package size={24} className="text-slate-600" />} 
-                          trend={weeklyStats!.stockTrendValue} 
-                          trendClassName={weeklyStats!.stockIsPositive ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'} 
-                          subtitle={`vs ${new Date(startDate).toLocaleDateString('id-ID', {day:'numeric', month:'short'})}`}
-                        />
+                        <StatCard title="Last Stock Value" value={formatCurrency(weeklyStats!.lastDayStock)} icon={<Package size={24} className="text-slate-600" />} trend={weeklyStats!.stockTrendValue} trendClassName={weeklyStats!.stockIsPositive ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'} subtitle={`vs ${new Date(startDate).toLocaleDateString('id-ID', {day:'numeric', month:'short'})}`} />
                       </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <ChartCard title="Weekly Good Issue & Receive" icon={<ArrowLeftRight size={18} />}>
                           <div className="flex flex-col">
                             <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                               <span className="w-[28%]">Location</span><span className="w-[36%] text-center">Issue</span><span className="w-[36%] text-center">Receive</span>
                             </div>
-                            {Object.entries(weeklyStats!.siteAgg)
-                              .filter(([name]) => name !== 'ZONA 9')
-                              .map(([name, data]: any) => (
+                            {Object.entries(weeklyStats!.siteAgg).filter(([name]) => name !== 'ZONA 9').map(([name, data]: any) => (
                               <div key={name} className="flex items-center px-2 py-3 border-b border-slate-50 last:border-0">
                                 <div className="w-[28%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-[11px] font-bold text-slate-800 truncate">{name}</span></div>
                                 <div className="w-[36%] text-center font-bold text-emerald-700 text-[11px] tabular-nums">{data.issued > 0 ? formatCurrency(data.issued) : '-'}</div>
@@ -945,7 +1010,6 @@ const App: React.FC = () => {
                           </div>
                         </ChartCard>
                       </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
                         <ChartCard title="Weekly Rig Move" icon={<Truck size={18} />} className="md:col-span-2">
                           <div className="flex flex-col space-y-3">
@@ -980,7 +1044,6 @@ const App: React.FC = () => {
                             </div>
                           </div>
                         </ChartCard>
-
                         <ChartCard title="Weekly Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-2">
                           <div className="grid grid-cols-2 gap-x-8 gap-y-3 w-full pb-4">
                             {Object.entries(weeklyStats!.fuelAgg).map(([name, data]: any) => ({ name, ...data })).map((data: any) => (
@@ -1041,42 +1104,36 @@ const App: React.FC = () => {
                           </div>
                         </ChartCard>
                       </div>
-
-                      <div className="flex-1 flex flex-col pt-8 overflow-visible min-h-fit">
-                        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-auto flex flex-col overflow-visible">
-                          <SectionHeader title="Weekly Update Zona 9" icon={<Edit3 size={18} />} />
-                          <div className="flex-1 mt-4 overflow-visible h-auto">
-                            <AutoResizeTextarea 
-                              value={weeklyUpdates['ZONA 9'] || ''} 
-                              onChange={(e) => setWeeklyUpdates({...weeklyUpdates, ['ZONA 9']: e.target.value})} 
-                              placeholder="Catatan mingguan..." 
-                              className="w-full bg-slate-50/50 p-6 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 outline-none leading-relaxed h-auto" 
-                              readOnly={isExportMode} 
-                            />
-                          </div>
+                      <div 
+                        className={`bg-white rounded-2xl shadow-sm border p-8 flex flex-col overflow-visible transition-all flex-1 ${draggedItem && !weeklyLayout.col1.includes(draggedItem) ? 'border-indigo-400 border-dashed bg-indigo-50/10' : 'border-slate-100'}`}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, 'col1', 'weekly')}
+                      >
+                        <SectionHeader title="Weekly Update Notes" icon={<Edit3 size={18} />} />
+                        <div className="space-y-6 mt-4 overflow-visible h-auto flex-1 min-h-[100px]">
+                          {weeklyLayout.col1.length === 0 && (
+                            <div className="h-full flex items-center justify-center border-2 border-dashed border-slate-100 rounded-xl py-12">
+                              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Drop here</span>
+                            </div>
+                          )}
+                          {weeklyLayout.col1.map(s => renderDraggableCard(s, 'weekly'))}
                         </div>
                       </div>
                     </div>
-
                     <div className="xl:col-span-2 flex flex-col overflow-visible">
-                      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-auto flex flex-col overflow-visible">
-                        <SectionHeader title="Weekly Update Sites" icon={<Edit3 size={18} />} />
-                        <div className="flex-1 space-y-6 mt-4 overflow-visible h-auto">
-                          {Object.keys(weeklyUpdates).filter(site => site !== 'ZONA 9').map((site) => (
-                            <div key={site} className="space-y-3 p-4 bg-slate-50/50 rounded-xl border border-slate-100 overflow-visible h-auto">
-                              <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
-                                <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: weeklyLastDaySites.find(s => s.name === site)?.color }}></div>
-                                <h4 className="text-xs font-black text-slate-800 uppercase">{site}</h4>
-                              </div>
-                              <AutoResizeTextarea 
-                                value={weeklyUpdates[site]} 
-                                onChange={(e) => setWeeklyUpdates({...weeklyUpdates, [site]: e.target.value})} 
-                                placeholder={`Catatan ${site}...`} 
-                                className="w-full bg-transparent border-none text-sm font-semibold text-slate-700 resize-none outline-none p-0 h-auto" 
-                                readOnly={isExportMode} 
-                              />
+                      <div 
+                        className={`bg-white rounded-2xl shadow-sm border p-8 h-full flex flex-col overflow-visible transition-all ${draggedItem && !weeklyLayout.col2.includes(draggedItem) ? 'border-indigo-400 border-dashed bg-indigo-50/10' : 'border-slate-100'}`}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, 'col2', 'weekly')}
+                      >
+                        <SectionHeader title="Weekly Update Notes" icon={<Edit3 size={18} />} />
+                        <div className="flex-1 space-y-6 mt-4 overflow-visible h-auto min-h-[100px]">
+                          {weeklyLayout.col2.length === 0 && (
+                            <div className="h-full flex items-center justify-center border-2 border-dashed border-slate-100 rounded-xl py-12">
+                              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Drop here</span>
                             </div>
-                          ))}
+                          )}
+                          {weeklyLayout.col2.map(s => renderDraggableCard(s, 'weekly'))}
                         </div>
                       </div>
                     </div>
@@ -1089,7 +1146,6 @@ const App: React.FC = () => {
                         <StatCard title="Total Good Receive" value={formatCurrency(dashboardStats!.totalGoodReceive)} icon={<ArrowDownLeft size={24} className="text-rose-500" />} />
                         <StatCard title="Total Stock Value" value={formatCurrency(dashboardStats!.totalStockValue)} icon={<Package size={24} className="text-slate-600" />} trend={dashboardStats!.trends.stock} trendClassName={dashboardStats!.trends.stockIsPositive ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'} />
                       </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <ChartCard title="Good Issue & Receive" icon={<ArrowLeftRight size={18} />}>
                           <div className="flex flex-col">
@@ -1098,7 +1154,7 @@ const App: React.FC = () => {
                             </div>
                             {sites.filter(curr => curr.name !== 'ZONA 9').map((data) => (
                               <div key={data.name} className="flex items-center px-2 py-3 border-b border-slate-50 last:border-0">
-                                <div className="w-[28%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-[11px] font-bold text-slate-800 truncate">{data.name}</span></div>
+                                <div className="w-[28%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-[11px] font-bold text-slate-800 truncate">{name}</span></div>
                                 <div className="w-[36%] text-center font-bold text-emerald-700 text-[11px] tabular-nums">{data.issued > 0 ? formatCurrency(data.issued) : '-'}</div>
                                 <div className="w-[36%] text-center font-bold text-rose-700 text-[11px] tabular-nums">{data.received > 0 ? formatCurrency(data.received) : '-'}</div>
                               </div>
@@ -1126,7 +1182,6 @@ const App: React.FC = () => {
                           </div>
                         </ChartCard>
                       </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
                         <ChartCard title="Person on Board" icon={<Users size={18} />} className="md:col-span-1">
                           <div className="flex flex-col space-y-2.5">
@@ -1151,7 +1206,6 @@ const App: React.FC = () => {
                             </div>
                           </div>
                         </ChartCard>
-
                         <ChartCard title="Support Rig Move" icon={<Truck size={18} />} className="md:col-span-1">
                           <div className="flex flex-col space-y-3">
                             {dashboardStats!.sortedRigMoves.length > 0 ? (
@@ -1185,7 +1239,6 @@ const App: React.FC = () => {
                             </div>
                           </div>
                         </ChartCard>
-
                         <ChartCard title="Fuel Consumption" icon={<Fuel size={18} />} className="md:col-span-2">
                           <div className="grid grid-cols-2 gap-x-8 gap-y-3 w-full pb-4">
                             {fuelData.map((data: any) => (
@@ -1246,27 +1299,36 @@ const App: React.FC = () => {
                           </div>
                         </ChartCard>
                       </div>
-                    </div>
-
-                    <div className="xl:col-span-2 flex flex-col overflow-visible">
-                      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-8 h-auto flex flex-col overflow-visible">
-                        <SectionHeader title="Daily Activity Log" icon={<ActivityIcon size={18} />} />
-                        <div className="flex-1 space-y-6 mt-4 overflow-visible h-auto">
-                          {sortedSiteNames.map((siteName) => (
-                            <div key={siteName} className="space-y-3 p-4 bg-slate-50/50 rounded-xl border border-slate-100 overflow-visible h-auto">
-                              <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
-                                <div className="w-1.5 h-4 rounded-full" style={{ backgroundColor: sites.find(s => s.name === siteName)?.color }}></div>
-                                <h4 className="text-xs font-black text-slate-800 uppercase">{siteName}</h4>
-                              </div>
-                              <AutoResizeTextarea 
-                                value={dailyUpdates[siteName] || ''} 
-                                onChange={(e) => setDailyUpdates({...dailyUpdates, [siteName]: e.target.value})} 
-                                placeholder={`Catatan log harian untuk ${siteName}...`} 
-                                className="w-full bg-transparent border-none text-sm font-semibold text-slate-700 resize-none outline-none p-0 h-auto" 
-                                readOnly={isExportMode} 
-                              />
+                      <div 
+                        className={`bg-white rounded-2xl shadow-sm border p-8 flex flex-col overflow-visible transition-all flex-1 ${draggedItem && !dailyLayout.col1.includes(draggedItem) ? 'border-indigo-400 border-dashed bg-indigo-50/10' : 'border-slate-100'}`}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, 'col1', 'daily')}
+                      >
+                        <SectionHeader title="Daily Activity Notes" icon={<ActivityIcon size={18} />} />
+                        <div className="space-y-6 mt-4 overflow-visible h-auto flex-1 min-h-[100px]">
+                          {dailyLayout.col1.length === 0 && (
+                            <div className="h-full flex items-center justify-center border-2 border-dashed border-slate-100 rounded-xl py-12">
+                              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Drop here</span>
                             </div>
-                          ))}
+                          )}
+                          {dailyLayout.col1.map(s => renderDraggableCard(s, 'daily'))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="xl:col-span-2 flex flex-col overflow-visible">
+                      <div 
+                        className={`bg-white rounded-2xl shadow-sm border p-8 h-full flex flex-col overflow-visible transition-all ${draggedItem && !dailyLayout.col2.includes(draggedItem) ? 'border-indigo-400 border-dashed bg-indigo-50/10' : 'border-slate-100'}`}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, 'col2', 'daily')}
+                      >
+                        <SectionHeader title="Daily Activity Notes" icon={<ActivityIcon size={18} />} />
+                        <div className="flex-1 space-y-6 mt-4 overflow-visible h-auto min-h-[100px]">
+                          {dailyLayout.col2.length === 0 && (
+                            <div className="h-full flex items-center justify-center border-2 border-dashed border-slate-100 rounded-xl py-12">
+                              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Drop here</span>
+                            </div>
+                          )}
+                          {dailyLayout.col2.map(s => renderDraggableCard(s, 'daily'))}
                         </div>
                       </div>
                     </div>
@@ -1279,13 +1341,13 @@ const App: React.FC = () => {
           )}
         </div>
       </main>
-      
       <style>{`
         @media print { .no-print { display: none !important; } }
         .export-view { background-color: #f8fafc !important; width: 1440px !important; overflow: visible !important; }
         .export-container { width: 1440px !important; max-width: none !important; padding: 40px !important; }
         .bg-white.rounded-2xl { overflow: visible !important; height: auto !important; }
         .grid, .xl\\:col-span-3, .xl\\:col-span-2 { overflow: visible !important; }
+        [draggable="true"] { user-select: none; }
       `}</style>
     </div>
   );
