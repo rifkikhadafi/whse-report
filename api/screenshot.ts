@@ -1,12 +1,16 @@
-
 import { chromium } from 'playwright-core';
 import chromiumPackage from '@sparticuz/chromium';
 
 export default async function handler(req, res) {
-  const { date, view, startDate, endDate, host } = req.query;
+  const { date, view, startDate, endDate, host, d1, d2, w1, w2 } = req.query;
 
-  // Pastikan URL tujuan benar (mengarah ke dashboard dengan mode export)
-  const targetUrl = `${host}/?export=true&date=${date}&view=${view}&startDate=${startDate}&endDate=${endDate}`;
+  // Reconstruct the URL including all layout configuration parameters
+  let targetUrl = `${host}/?export=true&date=${date}&view=${view}&startDate=${startDate}&endDate=${endDate}`;
+  
+  if (d1) targetUrl += `&d1=${encodeURIComponent(d1)}`;
+  if (d2) targetUrl += `&d2=${encodeURIComponent(d2)}`;
+  if (w1) targetUrl += `&w1=${encodeURIComponent(w1)}`;
+  if (w2) targetUrl += `&w2=${encodeURIComponent(w2)}`;
 
   let browser;
   try {

@@ -250,15 +250,15 @@ const App: React.FC = () => {
     'PHSS': '', 'SANGASANGA': '', 'SANGATTA': '', 'TANJUNG': '', 'ZONA 9': ''
   });
 
-  // Layout states for drag and drop
+  // Layout states for drag and drop - read from URL if in export mode
   const [weeklyLayout, setWeeklyLayout] = useState<{col1: string[], col2: string[]}>({
-    col1: ['ZONA 9'],
-    col2: ['PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG']
+    col1: urlParams.get('w1')?.split(',').filter(Boolean) || ['ZONA 9'],
+    col2: urlParams.get('w2')?.split(',').filter(Boolean) || ['PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG']
   });
 
   const [dailyLayout, setDailyLayout] = useState<{col1: string[], col2: string[]}>({
-    col1: ['ZONA 9'],
-    col2: ['PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG']
+    col1: urlParams.get('d1')?.split(',').filter(Boolean) || ['ZONA 9'],
+    col2: urlParams.get('d2')?.split(',').filter(Boolean) || ['PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG']
   });
 
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
@@ -453,7 +453,12 @@ const App: React.FC = () => {
         view: activeView,
         startDate: startDate,
         endDate: endDate,
-        host: host
+        host: host,
+        // Pass the layout configurations so the export matches current UI state
+        d1: dailyLayout.col1.join(','),
+        d2: dailyLayout.col2.join(','),
+        w1: weeklyLayout.col1.join(','),
+        w2: weeklyLayout.col2.join(',')
       });
       setProgress('Sedang merender dashboard HD (ini mungkin butuh 10-20 detik)...');
       const response = await fetch(`/api/screenshot?${params.toString()}`);
