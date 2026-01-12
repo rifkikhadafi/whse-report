@@ -230,6 +230,7 @@ const App: React.FC = () => {
   const [dbSizeMB, setDbSizeMB] = useState<number>(0);
   const [dbUsagePercent, setDbUsagePercent] = useState<number>(0);
   const dashboardRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLElement>(null);
 
   const [activeInputTab, setActiveInputTab] = useState<'sites' | 'fuel' | 'rigmoves'>('sites');
   
@@ -693,6 +694,21 @@ const App: React.FC = () => {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+
+    // Auto-scroll logic
+    if (isExportMode || !scrollContainerRef.current) return;
+
+    const container = scrollContainerRef.current;
+    const { clientY } = e;
+    const { top, bottom } = container.getBoundingClientRect();
+    const threshold = 120; // Distance from edge to start scrolling
+    const scrollSpeed = 15; // Speed of scroll
+
+    if (clientY < top + threshold) {
+      container.scrollTop -= scrollSpeed;
+    } else if (clientY > bottom - threshold) {
+      container.scrollTop += scrollSpeed;
+    }
   };
 
   const handleDrop = (e: React.DragEvent, targetCol: 'col1' | 'col2', viewType: 'weekly' | 'daily') => {
@@ -822,7 +838,10 @@ const App: React.FC = () => {
         </aside>
       )}
 
-      <main className={`flex-1 ${isExportMode ? '' : 'overflow-y-auto h-screen scroll-smooth'}`}>
+      <main 
+        ref={scrollContainerRef}
+        className={`flex-1 ${isExportMode ? '' : 'overflow-y-auto h-screen scroll-smooth'}`}
+      >
         <div className={`p-4 lg:p-10 min-h-full mx-auto ${isExportMode ? 'export-container' : 'max-w-[1600px]'}`} ref={dashboardRef}>
           <header className={`flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 relative z-10 ${isExportMode ? 'pb-6 border-b border-slate-100' : ''}`}>
             <div className="flex items-center gap-5">
