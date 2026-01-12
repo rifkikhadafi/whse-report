@@ -37,6 +37,8 @@ import { sites as initialSites, fuelData as initialFuelData } from './mockData';
 
 const LOGO_URL = "https://foyuidolkgrkbsooyswu.supabase.co/storage/v1/object/public/branding/logo.png";
 
+const FIXED_LOCATION_ORDER = ['PHSS', 'SANGASANGA', 'SANGATTA', 'TANJUNG'];
+
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
@@ -980,13 +982,17 @@ const App: React.FC = () => {
                             <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                               <span className="w-[28%]">Location</span><span className="w-[36%] text-center">Issue</span><span className="w-[36%] text-center">Receive</span>
                             </div>
-                            {Object.entries(weeklyStats!.siteAgg).filter(([name]) => name !== 'ZONA 9').map(([name, data]: any) => (
-                              <div key={name} className="flex items-center px-2 py-3 border-b border-slate-50 last:border-0">
-                                <div className="w-[28%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-[11px] font-bold text-slate-800 truncate">{name}</span></div>
-                                <div className="w-[36%] text-center font-bold text-emerald-700 text-[11px] tabular-nums">{data.issued > 0 ? formatCurrency(data.issued) : '-'}</div>
-                                <div className="w-[36%] text-center font-bold text-rose-700 text-[11px] tabular-nums">{data.received > 0 ? formatCurrency(data.received) : '-'}</div>
-                              </div>
-                            ))}
+                            {FIXED_LOCATION_ORDER.map(name => {
+                              const data = weeklyStats!.siteAgg[name];
+                              if (!data) return null;
+                              return (
+                                <div key={name} className="flex items-center px-2 py-3 border-b border-slate-50 last:border-0">
+                                  <div className="w-[28%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-[11px] font-bold text-slate-800 truncate">{name}</span></div>
+                                  <div className="w-[36%] text-center font-bold text-emerald-700 text-[11px] tabular-nums">{data.issued > 0 ? formatCurrency(data.issued) : '-'}</div>
+                                  <div className="w-[36%] text-center font-bold text-rose-700 text-[11px] tabular-nums">{data.received > 0 ? formatCurrency(data.received) : '-'}</div>
+                                </div>
+                              );
+                            })}
                           </div>
                         </ChartCard>
                         <ChartCard title="Weekly Stock Value" icon={<TrendingUp size={18} />}>
@@ -1152,9 +1158,12 @@ const App: React.FC = () => {
                             <div className="flex items-center px-2 py-2 mb-2 bg-slate-50 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                               <span className="w-[28%]">Location</span><span className="w-[36%] text-center">Issue</span><span className="w-[36%] text-center">Receive</span>
                             </div>
-                            {sites.filter(curr => curr.name !== 'ZONA 9').map((data) => (
+                            {sites
+                              .filter(s => FIXED_LOCATION_ORDER.includes(s.name))
+                              .sort((a, b) => FIXED_LOCATION_ORDER.indexOf(a.name) - FIXED_LOCATION_ORDER.indexOf(b.name))
+                              .map((data) => (
                               <div key={data.name} className="flex items-center px-2 py-3 border-b border-slate-50 last:border-0">
-                                <div className="w-[28%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-[11px] font-bold text-slate-800 truncate">{name}</span></div>
+                                <div className="w-[28%] flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: data.color }}></span><span className="text-[11px] font-bold text-slate-800 truncate">{data.name}</span></div>
                                 <div className="w-[36%] text-center font-bold text-emerald-700 text-[11px] tabular-nums">{data.issued > 0 ? formatCurrency(data.issued) : '-'}</div>
                                 <div className="w-[36%] text-center font-bold text-rose-700 text-[11px] tabular-nums">{data.received > 0 ? formatCurrency(data.received) : '-'}</div>
                               </div>
