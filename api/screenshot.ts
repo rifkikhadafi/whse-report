@@ -23,7 +23,7 @@ export default async function handler(req, res) {
 
     const context = await browser.newContext({
       viewport: { width: 1440, height: 1200 },
-      deviceScaleFactor: 2, // Hasil 2x lipat lebih tajam (HD)
+      deviceScaleFactor: 2,
     });
 
     const page = await context.newPage();
@@ -36,23 +36,27 @@ export default async function handler(req, res) {
 
     // Tunggu font dan chart selesai render
     await page.evaluateHandle('document.fonts.ready');
-    await page.waitForSelector('.recharts-surface', { timeout: 10000 });
+    await page.waitForSelector('.recharts-surface', { timeout: 15000 });
     
     // Tambahkan sedikit delay untuk animasi chart Recharts selesai
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(2000);
 
-    const screenshot = await page.screenshot({ 
-      type: 'png',
-      fullPage: true 
+    // Generate PDF instead of Screenshot
+    // Kita biarkan width 1440px sesuai layout CSS export
+    const pdf = await page.pdf({
+      width: '1440px',
+      printBackground: true,
+      margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' },
+      preferCSSPageSize: true
     });
 
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Content-Disposition', `attachment; filename="Zona9_Report_${date}.png"`);
-    res.send(screenshot);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Zona9_Report_${date}.pdf"`);
+    res.send(pdf);
 
   } catch (error) {
-    console.error('Screenshot Error:', error);
-    res.status(500).json({ error: 'Gagal merender gambar di server' });
+    console.error('PDF Render Error:', error);
+    res.status(500).json({ error: 'Gagal merender PDF di server' });
   } finally {
     if (browser) await browser.close();
   }

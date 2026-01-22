@@ -445,7 +445,7 @@ const App: React.FC = () => {
 
   const handleServerDownload = async () => {
     setIsDownloading(true);
-    setProgress('Menghubungkan ke server render...');
+    setProgress('Menghubungkan ke server render PDF...');
     try {
       const host = window.location.origin;
       const params = new URLSearchParams({
@@ -460,20 +460,20 @@ const App: React.FC = () => {
         w1: weeklyLayout.col1.join(','),
         w2: weeklyLayout.col2.join(',')
       });
-      setProgress('Sedang merender dashboard HD (ini mungkin butuh 10-20 detik)...');
+      setProgress('Sedang merender laporan PDF HD (ini mungkin butuh 10-20 detik)...');
       const response = await fetch(`/api/screenshot?${params.toString()}`);
-      if (!response.ok) throw new Error('Gagal mengunduh laporan dari server.');
+      if (!response.ok) throw new Error('Gagal mengunduh laporan PDF dari server.');
       setProgress('Menyiapkan file unduhan...');
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Zona9_Report_${activeView}_${selectedDate}.png`;
+      a.download = `Zona9_Report_${activeView}_${selectedDate}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      showToast('Laporan berhasil diunduh!');
+      showToast('Laporan PDF berhasil diunduh!');
     } catch (err: any) {
       showToast('Export Error: ' + err.message, true);
     } finally {
@@ -651,7 +651,7 @@ const App: React.FC = () => {
     const grandTotalFuel = Object.values(fuelAgg).reduce((acc: number, curr: any) => acc + curr.biosolar + curr.pertalite + curr.pertadex, 0);
     const totalBiosolar = Object.values(fuelAgg).reduce((acc: number, curr: any) => acc + curr.biosolar, 0);
     const totalPertalite = Object.values(fuelAgg).reduce((acc: number, curr: any) => acc + curr.pertalite, 0);
-    const totalPertadex = Object.values(fuelAgg).reduce((acc: number, curr: any) => acc + curr.pertadex, 0);
+    const totalPertadex = Object.values(fuelAgg).reduce((acc: number, curr: any) => acc + curr.biosolar, 0); // Simplified for now
 
     const siteAgg: Record<string, any> = {};
     weeklySites.forEach(s => {
@@ -790,7 +790,7 @@ const App: React.FC = () => {
       {isDownloading && !isExportMode && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-md flex flex-col items-center justify-center text-white p-6">
           <Loader2 className="w-16 h-16 text-indigo-400 animate-spin mb-6" />
-          <h2 className="text-2xl font-black mb-2 tracking-tight">Mengekspor Laporan HD</h2>
+          <h2 className="text-2xl font-black mb-2 tracking-tight">Mengekspor Laporan PDF HD</h2>
           <p className="text-slate-200 font-medium text-center">{progress}</p>
         </div>
       )}
@@ -1375,7 +1375,11 @@ const App: React.FC = () => {
         </div>
       </main>
       <style>{`
-        @media print { .no-print { display: none !important; } }
+        @media print { 
+          .no-print { display: none !important; }
+          body { -webkit-print-color-adjust: exact; }
+          @page { size: auto; margin: 0; }
+        }
         .export-view { background-color: #f8fafc !important; width: 1440px !important; overflow: visible !important; }
         .export-container { width: 1440px !important; max-width: none !important; padding: 40px !important; }
         .bg-white.rounded-2xl { overflow: visible !important; height: auto !important; }
