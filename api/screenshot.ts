@@ -4,7 +4,7 @@ import chromiumPackage from '@sparticuz/chromium';
 export default async function handler(req, res) {
   const { date, view, startDate, endDate, host, d1, d2, w1, w2 } = req.query;
 
-  // Reconstruct the URL including all layout configuration parameters
+  // Rekonstruksi URL dengan menyertakan semua parameter konfigurasi layout
   let targetUrl = `${host}/?export=true&date=${date}&view=${view}&startDate=${startDate}&endDate=${endDate}`;
   
   if (d1) targetUrl += `&d1=${encodeURIComponent(d1)}`;
@@ -21,8 +21,9 @@ export default async function handler(req, res) {
       headless: chromiumPackage.headless,
     });
 
+    // Gunakan viewport awal yang cukup besar untuk rendering awal
     const context = await browser.newContext({
-      viewport: { width: 1440, height: 1200 },
+      viewport: { width: 1440, height: 2000 },
       deviceScaleFactor: 2,
     });
 
@@ -38,16 +39,30 @@ export default async function handler(req, res) {
     await page.evaluateHandle('document.fonts.ready');
     await page.waitForSelector('.recharts-surface', { timeout: 15000 });
     
-    // Tambahkan sedikit delay untuk animasi chart Recharts selesai
+    // Tambahkan delay ekstra untuk memastikan animasi Recharts benar-benar selesai
     await page.waitForTimeout(2000);
 
-    // Generate PDF instead of Screenshot
-    // Kita biarkan width 1440px sesuai layout CSS export
+    // Hitung tinggi total konten secara dinamis agar PDF tidak terpotong (Single Page)
+    const dimensions = await page.evaluate(() => {
+      // Kita ambil scrollHeight dari documentElement atau body
+      return {
+        width: 1440,
+        height: Math.max(
+          document.documentElement.scrollHeight,
+          document.body.scrollHeight,
+          document.documentElement.offsetHeight
+        )
+      };
+    });
+
+    // Generate PDF dengan tinggi yang sudah dihitung
     const pdf = await page.pdf({
-      width: '1440px',
+      width: `${dimensions.width}px`,
+      height: `${dimensions.height}px`,
       printBackground: true,
       margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' },
-      preferCSSPageSize: true
+      // Jangan gunakan preferCSSPageSize: true agar tinggi kustom kita diutamakan
+      preferCSSPageSize: false
     });
 
     res.setHeader('Content-Type', 'application/pdf');
